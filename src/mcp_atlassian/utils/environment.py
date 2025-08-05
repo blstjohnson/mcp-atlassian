@@ -15,35 +15,28 @@ def get_available_services() -> dict[str, bool | None]:
     if confluence_url:
         is_cloud = is_atlassian_cloud_url(confluence_url)
 
-        # OAuth check (highest precedence, applies to Cloud)
-        if all(
-            [
-                os.getenv("ATLASSIAN_OAUTH_CLIENT_ID"),
-                os.getenv("ATLASSIAN_OAUTH_CLIENT_SECRET"),
-                os.getenv("ATLASSIAN_OAUTH_REDIRECT_URI"),
-                os.getenv("ATLASSIAN_OAUTH_SCOPE"),
-                os.getenv(
-                    "ATLASSIAN_OAUTH_CLOUD_ID"
-                ),  # CLOUD_ID is essential for OAuth client init
-            ]
-        ):
-            confluence_is_setup = True
-            logger.info(
-                "Using Confluence OAuth 2.0 (3LO) authentication (Cloud-only features)"
-            )
-        elif all(
-            [
-                os.getenv("ATLASSIAN_OAUTH_ACCESS_TOKEN"),
-                os.getenv("ATLASSIAN_OAUTH_CLOUD_ID"),
-            ]
-        ):
-            confluence_is_setup = True
-            logger.info(
-                "Using Confluence OAuth 2.0 (3LO) authentication (Cloud-only features) "
-                "with provided access token"
-            )
-        elif is_cloud:  # Cloud non-OAuth
+        # Prioritize Cloud authentication types
+        if is_cloud:
             if all(
+                [
+                    os.getenv("ATLASSIAN_OAUTH_CLIENT_ID"),
+                    os.getenv("ATLASSIAN_OAUTH_CLIENT_SECRET"),
+                    os.getenv("ATLASSIAN_OAUTH_REDIRECT_URI"),
+                    os.getenv("ATLASSIAN_OAUTH_SCOPE"),
+                    os.getenv("ATLASSIAN_OAUTH_CLOUD_ID"),
+                ]
+            ):
+                confluence_is_setup = True
+                logger.info("Using Confluence OAuth 2.0 (3LO) authentication (Cloud-only features)")
+            elif all(
+                [
+                    os.getenv("ATLASSIAN_OAUTH_ACCESS_TOKEN"),
+                    os.getenv("ATLASSIAN_OAUTH_CLOUD_ID"),
+                ]
+            ):
+                confluence_is_setup = True
+                logger.info("Using Confluence OAuth 2.0 (3LO) authentication (Cloud-only features) with provided access token")
+            elif all(
                 [
                     os.getenv("CONFLUENCE_USERNAME"),
                     os.getenv("CONFLUENCE_API_TOKEN"),
@@ -51,19 +44,31 @@ def get_available_services() -> dict[str, bool | None]:
             ):
                 confluence_is_setup = True
                 logger.info("Using Confluence Cloud Basic Authentication (API Token)")
-        else:  # Server/Data Center non-OAuth
-            if os.getenv("CONFLUENCE_PERSONAL_TOKEN") or (
-                os.getenv("CONFLUENCE_USERNAME") and os.getenv("CONFLUENCE_API_TOKEN")
+            # Minimal OAuth configuration (for user-provided tokens on Cloud)
+            elif os.getenv("ATLASSIAN_OAUTH_ENABLE", "").lower() in ("true", "1", "yes"):
+                confluence_is_setup = True
+                logger.info("Assuming Confluence Cloud is configured via minimal OAuth (user-provided tokens)")
+        # Then prioritize Server/Data Center authentication types
+        else: # not is_cloud
+            if os.getenv("CONFLUENCE_PERSONAL_TOKEN"):
+                confluence_is_setup = True
+                logger.info("Using Confluence Server/Data Center Personal Access Token (PAT)")
+            elif all(
+                [
+                    os.getenv("CONFLUENCE_USERNAME"),
+                    os.getenv("CONFLUENCE_API_TOKEN"),
+                ]
             ):
                 confluence_is_setup = True
-                logger.info(
-                    "Using Confluence Server/Data Center authentication (PAT or Basic Auth)"
-                )
+                logger.info("Using Confluence Server/Data Center Basic Authentication")
+            # Generic Bearer token for private servers
+            elif os.getenv("CONFLUENCE_GENERIC_BEARER_ENABLE", "").lower() in ("true", "1", "yes"):
+                confluence_is_setup = True
+                logger.info("Confluence Server/Data Center enabled for generic Bearer token via CONFLUENCE_GENERIC_BEARER_ENABLE")
+    # This block exists for cases where CONFLUENCE_URL is absent but OAuth is enabled globally (implicitly Cloud)
     elif os.getenv("ATLASSIAN_OAUTH_ENABLE", "").lower() in ("true", "1", "yes"):
         confluence_is_setup = True
-        logger.info(
-            "Using Confluence minimal OAuth configuration - expecting user-provided tokens via headers"
-        )
+        logger.info("Using Confluence minimal OAuth configuration - expecting user-provided tokens via headers (URL might be derived implicitly)")
 
     jira_url = os.getenv("JIRA_URL")
     jira_is_setup = False

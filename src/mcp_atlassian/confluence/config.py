@@ -24,10 +24,11 @@ class ConfluenceConfig:
     """
 
     url: str  # Base URL for Confluence
-    auth_type: Literal["basic", "pat", "oauth"]  # Authentication type
+    auth_type: Literal["basic", "pat", "oauth", "bearer_token"]  # Authentication type
     username: str | None = None  # Email or username
     api_token: str | None = None  # API token used as password
     personal_token: str | None = None  # Personal access token (Server/DC)
+    bearer_token: str | None = None  # Generic Bearer token for private servers
     oauth_config: OAuthConfig | BYOAccessTokenOAuthConfig | None = None
     ssl_verify: bool = True  # Whether to verify SSL certificates
     spaces_filter: str | None = None  # List of space keys to filter searches
@@ -93,27 +94,49 @@ class ConfluenceConfig:
         # Use the shared utility function directly
         is_cloud = is_atlassian_cloud_url(url)
 
-        if oauth_config:
-            # OAuth is available - could be full config or minimal config for user-provided tokens
+        # Determine authentication type based on environment variables and server type
+        # Prioritize OAuth if explicitly enabled and configured, then PAT, then Basic, then Generic Bearer
+        if oauth_config and is_cloud:  # OAuth only makes sense for cloud
             auth_type = "oauth"
+        elif personal_token and not is_cloud:  # PAT is primarily for Server/DC
+            auth_type = "pat"
+        elif username and api_token:  # Basic Auth can be for both Cloud and Server/DC
+            auth_type = "basic"
+        elif (
+            os.getenv("CONFLUENCE_GENERIC_BEARER_ENABLE") and not is_cloud
+        ):  # New generic Bearer for private servers
+            auth_type = "bearer_token"
         elif is_cloud:
-            if username and api_token:
-                auth_type = "basic"
-            else:
-                error_msg = "Cloud authentication requires CONFLUENCE_USERNAME and CONFLUENCE_API_TOKEN, or OAuth configuration (set ATLASSIAN_OAUTH_ENABLE=true for user-provided tokens)"
-                raise ValueError(error_msg)
-        else:  # Server/Data Center
-            if personal_token:
-                auth_type = "pat"
-            elif username and api_token:
-                # Allow basic auth for Server/DC too
-                auth_type = "basic"
-            else:
-                error_msg = "Server/Data Center authentication requires CONFLUENCE_PERSONAL_TOKEN or CONFLUENCE_USERNAME and CONFLUENCE_API_TOKEN"
+            error_msg = (
+                "Cloud authentication requires CONFLUENCE_USERNAME and CONFLUENCE_API_TOKEN, "
+                "or OAuth configuration (set ATLASSIAN_OAUTH_ENABLE=true and provide client credentials/cloud ID)."
+            )
+            raise ValueError(error_msg)
+        else:
+            # If none of the above specific auth types are configured, check for generic bearer token setup on non-cloud.
+            if (
+                url
+                and os.getenv("CONFLUENCE_GENERIC_BEARER_ENABLE", "").lower()
+                in ("true", "1", "yes")
+                and not is_cloud
+            ):
+                auth_type = "bearer_token"
+                logging.getLogger(
+                    "mcp-atlassian.confluence.config"
+                ).info(  # Added logging import
+                    "Confluence configured for generic bearer token and ready to accept user-provided tokens (via request header)."
+                )
+            else:  # Final fallback if no valid configuration or generic bearer is not enabled/suitable
+                error_msg = (
+                    "Confluence URL found but no valid authentication is configured. "
+                    "For Cloud: CONFLUENCE_USERNAME/CONFLUENCE_API_TOKEN or ATLASSIAN_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI/SCOPE/CLOUD_ID. "
+                    "For Server/Data Center: CONFLUENCE_PERSONAL_TOKEN, CONFLUENCE_USERNAME/CONFLUENCE_API_TOKEN, "
+                    "or CONFLUENCE_GENERIC_BEARER_ENABLE=true with Bearer token in requests."
+                )
                 raise ValueError(error_msg)
 
-        # SSL verification (for Server/DC)
-        ssl_verify = is_env_ssl_verify("CONFLUENCE_SSL_VERIFY")
+        # SSL verification
+        ssl_verify = is_env_ssl_verify("CONFLUENCE_SSL_VERIFY")  # Provided env_var_name
 
         # Get the spaces filter if provided
         spaces_filter = os.getenv("CONFLUENCE_SPACES_FILTER")
@@ -133,6 +156,9 @@ class ConfluenceConfig:
             username=username,
             api_token=api_token,
             personal_token=personal_token,
+            bearer_token=os.getenv("CONFLUENCE_GENERIC_BEARER_TOKEN")
+            if auth_type == "bearer_token"
+            else None,
             oauth_config=oauth_config,
             ssl_verify=ssl_verify,
             spaces_filter=spaces_filter,
@@ -186,6 +212,9 @@ class ConfluenceConfig:
             return bool(self.personal_token)
         elif self.auth_type == "basic":
             return bool(self.username and self.api_token)
+        elif self.auth_type == "bearer_token":
+            # For this mode, the global configuration only needs a URL, as the actual token comes from the request headers.
+            return bool(self.url)
         logger.warning(
             f"Unknown or unsupported auth_type: {self.auth_type} in ConfluenceConfig"
         )

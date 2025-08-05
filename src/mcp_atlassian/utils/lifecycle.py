@@ -2,7 +2,7 @@
 
 import logging
 import signal
-import sys
+import sys  # Added import for sys
 import threading
 from typing import Any
 
@@ -35,13 +35,19 @@ def setup_signal_handlers() -> None:
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Handle SIGPIPE which occurs when parent process closes the pipe
-    try:
-        signal.signal(signal.SIGPIPE, signal_handler)
-        logger.debug("SIGPIPE handler registered")
-    except AttributeError:
-        # SIGPIPE may not be available on all platforms (e.g., Windows)
-        logger.debug("SIGPIPE not available on this platform")
+    # Handle SIGPIPE which occurs when parent process closes the pipe.
+    # SIGPIPE is Unix-specific; do not register on Windows.
+    if sys.platform != "win32":
+        try:
+            signal.signal(signal.SIGPIPE, signal_handler)
+            logger.debug("SIGPIPE handler registered")
+        except AttributeError:
+            # Fallback for systems where SIGPIPE might not be defined even if not Windows
+            logger.debug("SIGPIPE not available on this platform")
+    else:
+        logger.debug(
+            "SIGPIPE is not applicable on Windows, skipping handler registration."
+        )
 
 
 def ensure_clean_exit() -> None:

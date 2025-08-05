@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os  # Added import for os
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context
@@ -48,9 +49,9 @@ def _create_user_config_for_fetcher(
         ValueError: If required credentials are missing or auth_type is unsupported.
         TypeError: If base_config is not a supported type.
     """
-    if auth_type not in ["oauth", "pat"]:
+    if auth_type not in ["oauth", "pat", "bearer_token"]:  # Added "bearer_token"
         raise ValueError(
-            f"Unsupported auth_type '{auth_type}' for user-specific config creation. Expected 'oauth' or 'pat'."
+            f"Unsupported auth_type '{auth_type}' for user-specific config creation. Expected 'oauth', 'pat', or 'bearer_token'."
         )
 
     username_for_config: str | None = credentials.get("user_email_context")
@@ -59,15 +60,13 @@ def _create_user_config_for_fetcher(
         f"Creating user config for fetcher. Auth type: {auth_type}, Credentials keys: {credentials.keys()}, Cloud ID: {cloud_id}"
     )
 
-    common_args: dict[str, Any] = {
-        "url": base_config.url,
-        "auth_type": auth_type,
-        "ssl_verify": base_config.ssl_verify,
-        "http_proxy": base_config.http_proxy,
-        "https_proxy": base_config.https_proxy,
-        "no_proxy": base_config.no_proxy,
-        "socks_proxy": base_config.socks_proxy,
-    }
+    # Arguments relevant to all configs that accept `username`, `api_token`, `personal_token`, `oauth_config`.
+    # `bearer_token` is handled separately as it's Confluence-specific.
+    calculated_username: str | None = None
+    calculated_api_token: str | None = None
+    calculated_personal_token: str | None = None
+    calculated_oauth_config: OAuthConfig | None = None
+    calculated_bearer_token: str | None = None # Only for ConfluenceConfig
 
     if auth_type == "oauth":
         user_access_token = credentials.get("oauth_access_token")
@@ -75,27 +74,38 @@ def _create_user_config_for_fetcher(
             raise ValueError(
                 "OAuth access token missing in credentials for user auth_type 'oauth'"
             )
+
+        # Determine global_oauth_cfg (existing logic from original code)
         if (
             not base_config
             or not hasattr(base_config, "oauth_config")
-            or not getattr(base_config, "oauth_config", None)
+            or (getattr(base_config, "oauth_config", None) is None)
         ):
-            raise ValueError(
-                f"Global OAuth config for {type(base_config).__name__} is missing, "
-                "but user auth_type is 'oauth'."
-            )
-        global_oauth_cfg = base_config.oauth_config
+            if os.getenv("ATLASSIAN_OAUTH_ENABLE", "").lower() in ("true", "1", "yes"):
+                logger.debug(
+                    f"_create_user_config_for_fetcher: Base config has no OAuth config, "
+                    f"but ATLASSIAN_OAUTH_ENABLE is true. Assuming minimal config scenario."
+                )
+                global_oauth_cfg = OAuthConfig(
+                    client_id="", client_secret="", redirect_uri="", scope="",
+                    cloud_id=os.getenv("ATLASSIAN_OAUTH_CLOUD_ID")
+                )
+            else:
+                raise ValueError(
+                    f"Global OAuth config for {type(base_config).__name__} is missing, "
+                    "but `ATLASSIAN_OAUTH_ENABLE` is not set to true, or user auth_type is 'oauth'."
+                )
+        else:
+            global_oauth_cfg = base_config.oauth_config # type: ignore
 
-        # Use provided cloud_id or fall back to global config cloud_id
         effective_cloud_id = cloud_id if cloud_id else global_oauth_cfg.cloud_id
         if not effective_cloud_id:
             raise ValueError(
                 "Cloud ID is required for OAuth authentication. "
-                "Provide it via X-Atlassian-Cloud-Id header or configure it globally."
+                "Provide it via X-Atlassian-Cloud-Id header or configure it globally (e.g., ATLASSIAN_OAUTH_CLOUD_ID)."
             )
 
-        # For minimal OAuth config (user-provided tokens), use empty strings for client credentials
-        oauth_config_for_user = OAuthConfig(
+        calculated_oauth_config = OAuthConfig(
             client_id=global_oauth_cfg.client_id if global_oauth_cfg.client_id else "",
             client_secret=global_oauth_cfg.client_secret
             if global_oauth_cfg.client_secret
@@ -109,44 +119,62 @@ def _create_user_config_for_fetcher(
             expires_at=None,
             cloud_id=effective_cloud_id,
         )
-        common_args.update(
-            {
-                "username": username_for_config,
-                "api_token": None,
-                "personal_token": None,
-                "oauth_config": oauth_config_for_user,
-            }
-        )
+        calculated_username = username_for_config # Oauth can have username
+
+
     elif auth_type == "pat":
         user_pat = credentials.get("personal_access_token")
         if not user_pat:
             raise ValueError("PAT missing in credentials for user auth_type 'pat'")
-
-        # Log warning if cloud_id is provided with PAT auth (not typically needed)
         if cloud_id:
             logger.warning(
                 f"Cloud ID '{cloud_id}' provided with PAT authentication. "
                 "PAT authentication typically uses the base URL directly and doesn't require cloud_id override."
             )
+        calculated_personal_token = user_pat
 
-        common_args.update(
-            {
-                "personal_token": user_pat,
-                "oauth_config": None,
-                "username": None,
-                "api_token": None,
-            }
-        )
+    elif auth_type == "bearer_token":
+        user_bearer_token = credentials.get("bearer_token")
+        if not user_bearer_token:
+            raise ValueError("Generic Bearer token missing in credentials for user auth_type 'bearer_token'")
+        if cloud_id:
+            logger.warning(
+                f"Cloud ID '{cloud_id}' provided with generic Bearer token authentication. "
+                "Generic Bearer token authentication typically uses the base URL directly and doesn't require cloud_id."
+            )
+        calculated_bearer_token = user_bearer_token
+
+
+    # Now construct config_creation_args based on the target config type
+    config_creation_args = {
+        "url": base_config.url,
+        "auth_type": auth_type,
+        "ssl_verify": base_config.ssl_verify,
+        "http_proxy": base_config.http_proxy,
+        "https_proxy": base_config.https_proxy,
+        "no_proxy": base_config.no_proxy,
+        "socks_proxy": base_config.socks_proxy,
+        "custom_headers": base_config.custom_headers, # Preserve custom headers
+        "username": calculated_username,
+        "api_token": calculated_api_token, # Will be None unless auth_type is basic
+        "personal_token": calculated_personal_token,
+        "oauth_config": calculated_oauth_config,
+    }
 
     if isinstance(base_config, JiraConfig):
+        # JiraConfig does not have 'bearer_token', so ensure it's not passed
+        if "bearer_token" in config_creation_args:
+            del config_creation_args["bearer_token"]
         user_jira_config: UserJiraConfigType = dataclasses.replace(
-            base_config, **common_args
+            base_config, **config_creation_args
         )
         user_jira_config.projects_filter = base_config.projects_filter
         return user_jira_config
     elif isinstance(base_config, ConfluenceConfig):
+        # ConfluenceConfig can have 'bearer_token'
+        config_creation_args["bearer_token"] = calculated_bearer_token
         user_confluence_config: UserConfluenceConfigType = dataclasses.replace(
-            base_config, **common_args
+            base_config, **config_creation_args
         )
         user_confluence_config.spaces_filter = base_config.spaces_filter
         return user_confluence_config
@@ -291,7 +319,11 @@ async def get_confluence_fetcher(ctx: Context) -> ConfluenceFetcher:
             return request.state.confluence_fetcher
         user_auth_type = getattr(request.state, "user_atlassian_auth_type", None)
         logger.debug(f"get_confluence_fetcher: User auth type: {user_auth_type}")
-        if user_auth_type in ["oauth", "pat"] and hasattr(
+        if user_auth_type in [
+            "oauth",
+            "pat",
+            "bearer_token",
+        ] and hasattr(  # Added "bearer_token"
             request.state, "user_atlassian_token"
         ):
             user_token = getattr(request.state, "user_atlassian_token", None)
@@ -305,6 +337,8 @@ async def get_confluence_fetcher(ctx: Context) -> ConfluenceFetcher:
                 credentials["oauth_access_token"] = user_token
             elif user_auth_type == "pat":
                 credentials["personal_access_token"] = user_token
+            elif user_auth_type == "bearer_token":  # Handle generic bearer token
+                credentials["bearer_token"] = user_token
             lifespan_ctx_dict = ctx.request_context.lifespan_context  # type: ignore
             app_lifespan_ctx: MainAppContext | None = (
                 lifespan_ctx_dict.get("app_lifespan_context")

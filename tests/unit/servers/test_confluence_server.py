@@ -113,6 +113,17 @@ def mock_base_confluence_config():
 
 
 @pytest.fixture
+def mock_private_server_bearer_config():
+    """Create a mock ConfluenceConfig for a private server with generic bearer token."""
+    return ConfluenceConfig(
+        url="http://private-confluence.local",
+        auth_type="bearer_token",
+        bearer_token="mock-private-bearer-token",
+        ssl_verify=False,  # Often private servers use self-signed certs
+    )
+
+
+@pytest.fixture
 def test_confluence_mcp(mock_confluence_fetcher, mock_base_confluence_config):
     """Create a test FastMCP instance with standard configuration."""
 
@@ -244,6 +255,105 @@ async def client(test_confluence_mcp, mock_confluence_fetcher):
         client_instance = Client(transport=FastMCPTransport(test_confluence_mcp))
         async with client_instance as connected_client:
             yield connected_client
+
+
+@pytest.fixture
+async def private_server_bearer_client(
+    mock_confluence_fetcher, mock_private_server_bearer_config
+):
+    """Create a FastMCP client for testing with a mocked private Confluence server and generic bearer token."""
+
+    # Import and register tool functions (as they are in confluence.py)
+    from src.mcp_atlassian.servers.confluence import (
+        add_comment,
+        add_label,
+        create_page,
+        delete_page,
+        get_comments,
+        get_labels,
+        get_page,
+        get_page_children,
+        search,
+        search_user,
+        update_page,
+    )
+
+    @asynccontextmanager
+    async def private_bearer_test_lifespan(
+        app: FastMCP,
+    ) -> AsyncGenerator[MainAppContext, None]:
+        try:
+            yield MainAppContext(
+                full_confluence_config=mock_private_server_bearer_config,
+                read_only=False,
+            )
+        finally:
+            pass
+
+    test_mcp = AtlassianMCP(
+        "PrivateBearerTestConfluence",
+        description="Private Bearer Test Confluence MCP Server",
+        lifespan=private_bearer_test_lifespan,
+    )
+
+    # Create and configure the sub-MCP for Confluence tools
+    confluence_sub_mcp = FastMCP(name="PrivateBearerTestConfluenceSubMCP")
+    confluence_sub_mcp.tool()(search)
+    confluence_sub_mcp.tool()(get_page)
+    confluence_sub_mcp.tool()(get_page_children)
+    confluence_sub_mcp.tool()(get_comments)
+    confluence_sub_mcp.tool()(add_comment)
+    confluence_sub_mcp.tool()(get_labels)
+    confluence_sub_mcp.tool()(add_label)
+    confluence_sub_mcp.tool()(create_page)
+    confluence_sub_mcp.tool()(update_page)
+    confluence_sub_mcp.tool()(delete_page)
+    confluence_sub_mcp.tool()(search_user)
+
+    test_mcp.mount("confluence", confluence_sub_mcp)
+
+    with (
+        patch(
+            "src.mcp_atlassian.servers.confluence.get_confluence_fetcher",
+            AsyncMock(return_value=mock_confluence_fetcher),
+        ),
+        patch(
+            "src.mcp_atlassian.servers.dependencies.get_http_request",
+            # Mock the request to have the bearer token in its state
+            MagicMock(
+                spec=Request,
+                state=MagicMock(
+                    user_atlassian_token=mock_private_server_bearer_config.bearer_token,
+                    user_atlassian_auth_type="bearer_token",
+                    user_atlassian_cloud_id=None,
+                ),
+            ),
+        ),
+    ):
+        client_instance = Client(transport=FastMCPTransport(test_mcp))
+        async with client_instance as connected_client:
+            yield connected_client
+
+
+@pytest.mark.anyio
+async def test_search_with_private_bearer_token(
+    private_server_bearer_client, mock_confluence_fetcher
+):
+    """Test the search tool with a user-provided generic bearer token."""
+    response = await private_server_bearer_client.call_tool(
+        "confluence_search", {"query": "test private search"}
+    )
+
+    mock_confluence_fetcher.search.assert_called_once()
+    args, kwargs = mock_confluence_fetcher.search.call_args
+    assert 'siteSearch ~ "test private search"' in args[0]
+    assert kwargs.get("limit") == 10
+    assert kwargs.get("spaces_filter") is None
+
+    result_data = json.loads(response[0].text)
+    assert isinstance(result_data, list)
+    assert len(result_data) > 0
+    assert result_data[0]["title"] == "Test Page Mock Title"
 
 
 @pytest.fixture

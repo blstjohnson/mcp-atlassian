@@ -218,6 +218,8 @@ class UserTokenMiddleware(BaseHTTPMiddleware):
             logger.warning(
                 "UserTokenMiddleware initialized without mcp_server_ref. Path matching for MCP endpoint might fail if settings are needed."
             )
+        # Store a reference to the global app lifespan context
+        self.app_lifespan_ctx: MainAppContext | None = None  # Initialize as None
 
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
@@ -231,6 +233,16 @@ class UserTokenMiddleware(BaseHTTPMiddleware):
                 "UserTokenMiddleware.dispatch: self.mcp_server_ref is None. Skipping MCP auth logic."
             )
             return await call_next(request)
+
+        # Ensure app_lifespan_ctx is set from the ASGI app state during the first dispatch
+        if not self.app_lifespan_ctx and hasattr(
+            request.app.state, "app_lifespan_context"
+        ):
+            self.app_lifespan_ctx = request.app.state.app_lifespan_context
+
+        logger.debug(
+            f"UserTokenMiddleware.dispatch: Current app_lifespan_ctx present: {bool(self.app_lifespan_ctx)}"
+        )
 
         mcp_path = mcp_server_instance.settings.streamable_http_path.rstrip("/")
         request_path = request.url.path.rstrip("/")
@@ -279,7 +291,17 @@ class UserTokenMiddleware(BaseHTTPMiddleware):
                     f"UserTokenMiddleware.dispatch: Bearer token extracted (masked): ...{mask_sensitive(token, 8)}"
                 )
                 request.state.user_atlassian_token = token
-                request.state.user_atlassian_auth_type = "oauth"
+                # Determine auth_type based on whether the base Confluence URL is a cloud URL
+                # If app_lifespan_ctx is available and has confluence config, use its is_cloud property
+                is_confluence_cloud = (
+                    self.app_lifespan_ctx
+                    and self.app_lifespan_ctx.full_confluence_config
+                    and self.app_lifespan_ctx.full_confluence_config.is_cloud
+                )  # type: ignore
+                request.state.user_atlassian_auth_type = (
+                    "oauth" if is_confluence_cloud else "bearer_token"
+                )
+
                 request.state.user_atlassian_email = None
                 logger.debug(
                     f"UserTokenMiddleware.dispatch: Set request.state (pre-validation): "

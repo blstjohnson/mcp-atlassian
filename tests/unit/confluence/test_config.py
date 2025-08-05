@@ -183,3 +183,60 @@ def test_is_cloud_oauth_with_cloud_id():
         oauth_config=oauth_config,
     )
     assert config.is_cloud is True
+
+
+def test_from_env_generic_bearer_success():
+    """Test that from_env successfully creates a config for generic bearer token."""
+    with patch.dict(
+        "os.environ",
+        {
+            "CONFLUENCE_URL": "http://private-confluence.com",
+            "CONFLUENCE_GENERIC_BEARER_ENABLE": "true",
+            "CONFLUENCE_GENERIC_BEARER_TOKEN": "my-secret-bearer-token",
+        },
+        clear=True,
+    ):
+        config = ConfluenceConfig.from_env()
+        assert config.url == "http://private-confluence.com"
+        assert config.auth_type == "bearer_token"
+        assert config.bearer_token == "my-secret-bearer-token"
+        assert config.is_cloud is False
+        assert config.is_auth_configured() is True
+
+
+def test_from_env_generic_bearer_no_global_token_but_enabled():
+    """Test that from_env creates a valid config if generic bearer is enabled but no global token is set."""
+    with patch.dict(
+        "os.environ",
+        {
+            "CONFLUENCE_URL": "http://private-confluence.com",
+            "CONFLUENCE_GENERIC_BEARER_ENABLE": "true",
+            # CONFLUENCE_GENERIC_BEARER_TOKEN is intentionally missing (expected to be provided by user)
+        },
+        clear=True,
+    ):
+        config = ConfluenceConfig.from_env()
+        assert config.url == "http://private-confluence.com"
+        assert config.auth_type == "bearer_token"
+        assert config.bearer_token is None  # No global token should be set
+        assert config.is_cloud is False
+        assert (
+            config.is_auth_configured() is True
+        )  # Should be considered configured with just URL+ENABLE
+
+
+def test_from_env_no_auth_configured_scenario():
+    """Test that from_env raises ValueError when truly no authentication is configured."""
+    with patch.dict(
+        "os.environ",
+        {
+            "CONFLUENCE_URL": "http://private-confluence.com",
+            # No CONFLUENCE_GENERIC_BEARER_ENABLE, no PAT, no Basic Auth
+        },
+        clear=True,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Confluence URL found but no valid authentication is configured",
+        ):
+            ConfluenceConfig.from_env()
