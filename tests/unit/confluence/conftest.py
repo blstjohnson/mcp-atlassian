@@ -511,6 +511,50 @@ def confluence_client(mock_config, mock_atlassian_confluence, mock_preprocessor)
 
 
 # ============================================================================
+# Spaces Mixin Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def spaces_mixin(mock_config, mock_atlassian_confluence, mock_preprocessor):
+    """
+    Create a SpacesMixin instance with mocked dependencies for testing.
+
+    This fixture provides a fully functional SpacesMixin with mocked
+    Atlassian API calls and content preprocessing for testing navigation
+    functionality.
+
+    Args:
+        mock_config: Mock configuration
+        mock_atlassian_confluence: Mock Atlassian client
+        mock_preprocessor: Mock text preprocessor
+
+    Returns:
+        SpacesMixin: Configured mixin instance
+    """
+    # Ensure the module is imported at the top level
+    from mcp_atlassian.confluence.spaces import SpacesMixin
+
+    # Create a simplified mock setup that doesn't interfere with class methods
+    with patch("mcp_atlassian.confluence.client.Confluence") as mock_confluence_class:
+        with patch(
+            "mcp_atlassian.preprocessing.confluence.ConfluencePreprocessor"
+        ) as mock_preprocessor_class:
+            # Set up the mocks to return our fixtures
+            mock_confluence_class.return_value = mock_atlassian_confluence
+            mock_preprocessor_class.return_value = mock_preprocessor
+
+            # Create the SpacesMixin instance
+            mixin = SpacesMixin(config=mock_config)
+            # Directly assign the mocked dependencies to ensure they're available
+            mixin.confluence = mock_atlassian_confluence
+            mixin.preprocessor = mock_preprocessor
+            mixin.config = mock_config
+
+            yield mixin
+
+
+# ============================================================================
 # Specialized Test Data Fixtures
 # ============================================================================
 

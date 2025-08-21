@@ -468,3 +468,108 @@ MOCK_PAGES_FROM_SPACE_RESPONSE = [
         },
     },
 ]
+
+# Mock data for root pages (pages with no parent)
+MOCK_ROOT_PAGES_CQL_RESPONSE = {
+    "results": [
+        {
+            "content": {
+                "id": "root123",
+                "type": "page",
+                "status": "current",
+                "title": "Welcome to Test Space",
+                "space": {"key": "TEST", "name": "Test Space", "type": "global"},
+                "version": {"number": 1, "when": "2024-01-01T10:00:00.000Z"},
+                "body": {
+                    "storage": {
+                        "value": "<h1>Welcome</h1><p>This is a root page with no parent.</p>",
+                        "representation": "storage",
+                    }
+                },
+                "ancestors": [],  # Empty ancestors = root page
+                "_expandable": {
+                    "space": "/rest/api/space/TEST",
+                    "history": "/rest/api/content/root123/history",
+                    "ancestors": "",
+                    "descendants": "/rest/api/content/root123/descendant",
+                },
+                "_links": {
+                    "webui": "/spaces/TEST/pages/root123/Welcome+to+Test+Space",
+                    "self": "https://test.atlassian.net/wiki/rest/api/content/root123",
+                },
+            },
+            "title": "Welcome to Test Space",
+            "excerpt": "This is a root page with no parent.",
+            "url": "/spaces/TEST/pages/root123/Welcome+to+Test+Space",
+            "resultGlobalContainer": {
+                "title": "Test Space",
+                "displayUrl": "/spaces/TEST",
+            },
+            "entityType": "content",
+            "lastModified": "2024-01-01T10:00:00.000Z",
+        },
+        {
+            "content": {
+                "id": "root456",
+                "type": "page",
+                "status": "current",
+                "title": "Getting Started Guide",
+                "space": {"key": "TEST", "name": "Test Space", "type": "global"},
+                "version": {"number": 2, "when": "2024-01-02T15:30:00.000Z"},
+                "body": {
+                    "storage": {
+                        "value": "<h1>Getting Started</h1><p>This guide will help you get started.</p>",
+                        "representation": "storage",
+                    }
+                },
+                "ancestors": [],  # Empty ancestors = root page
+                "_expandable": {
+                    "space": "/rest/api/space/TEST",
+                    "history": "/rest/api/content/root456/history",
+                    "ancestors": "",
+                    "descendants": "/rest/api/content/root456/descendant",
+                },
+                "_links": {
+                    "webui": "/spaces/TEST/pages/root456/Getting+Started+Guide",
+                    "self": "https://test.atlassian.net/wiki/rest/api/content/root456",
+                },
+            },
+            "title": "Getting Started Guide",
+            "excerpt": "This guide will help you get started.",
+            "url": "/spaces/TEST/pages/root456/Getting+Started+Guide",
+            "resultGlobalContainer": {
+                "title": "Test Space",
+                "displayUrl": "/spaces/TEST",
+            },
+            "entityType": "content",
+            "lastModified": "2024-01-02T15:30:00.000Z",
+        },
+    ],
+    "start": 0,
+    "limit": 50,
+    "size": 2,
+    "totalSize": 2,
+    "cqlQuery": 'space = "TEST" AND parent = null AND type = page',
+    "searchDuration": 89,
+    "_links": {
+        "base": "https://test.atlassian.net/wiki",
+        "context": "/wiki",
+        "self": "https://test.atlassian.net/wiki/rest/api/search?cql=space%3D%22TEST%22%20AND%20parent%3Dnull%20AND%20type%3Dpage",
+    },
+}
+
+# Mock empty response for spaces with no root pages
+MOCK_EMPTY_ROOT_PAGES_CQL_RESPONSE = {
+    "results": [],
+    "start": 0,
+    "limit": 50,
+    "size": 0,
+    "totalSize": 0,
+    "cqlQuery": 'space = "EMPTY" AND parent = null AND type = page',
+    "searchDuration": 12,
+    "_links": {
+        "base": "https://test.atlassian.net/wiki",
+        "context": "/wiki",
+        "self": "https://test.atlassian.net/wiki/rest/api/search?cql=space%3D%22EMPTY%22%20AND%20parent%3Dnull%20AND%20type%3Dpage",
+    },
+}
