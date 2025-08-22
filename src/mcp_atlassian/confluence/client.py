@@ -70,9 +70,11 @@ class ConfluenceClient:
             )
         elif self.config.auth_type == "bearer_token":
             if not self.config.bearer_token:
-                error_msg = "Bearer token authentication requires a 'bearer_token' in config."
+                error_msg = (
+                    "Bearer token authentication requires a 'bearer_token' in config."
+                )
                 raise ValueError(error_msg)
-            
+
             session = Session()
             session.headers["Authorization"] = f"Bearer {self.config.bearer_token}"
             logger.debug(
@@ -82,8 +84,8 @@ class ConfluenceClient:
             )
             self.confluence = Confluence(
                 url=self.config.url,
-                session=session, # Use the session with the Bearer token
-                cloud=False, # Assuming private server for generic bearer token
+                session=session,  # Use the session with the Bearer token
+                cloud=False,  # Assuming private server for generic bearer token
                 verify_ssl=self.config.ssl_verify,
             )
         elif self.config.auth_type == "basic":  # Explicitly basic auth

@@ -66,7 +66,7 @@ def _create_user_config_for_fetcher(
     calculated_api_token: str | None = None
     calculated_personal_token: str | None = None
     calculated_oauth_config: OAuthConfig | None = None
-    calculated_bearer_token: str | None = None # Only for ConfluenceConfig
+    calculated_bearer_token: str | None = None  # Only for ConfluenceConfig
 
     if auth_type == "oauth":
         user_access_token = credentials.get("oauth_access_token")
@@ -83,12 +83,15 @@ def _create_user_config_for_fetcher(
         ):
             if os.getenv("ATLASSIAN_OAUTH_ENABLE", "").lower() in ("true", "1", "yes"):
                 logger.debug(
-                    f"_create_user_config_for_fetcher: Base config has no OAuth config, "
-                    f"but ATLASSIAN_OAUTH_ENABLE is true. Assuming minimal config scenario."
+                    "_create_user_config_for_fetcher: Base config has no OAuth config, "
+                    "but ATLASSIAN_OAUTH_ENABLE is true. Assuming minimal config scenario."
                 )
                 global_oauth_cfg = OAuthConfig(
-                    client_id="", client_secret="", redirect_uri="", scope="",
-                    cloud_id=os.getenv("ATLASSIAN_OAUTH_CLOUD_ID")
+                    client_id="",
+                    client_secret="",
+                    redirect_uri="",
+                    scope="",
+                    cloud_id=os.getenv("ATLASSIAN_OAUTH_CLOUD_ID"),
                 )
             else:
                 raise ValueError(
@@ -96,7 +99,7 @@ def _create_user_config_for_fetcher(
                     "but `ATLASSIAN_OAUTH_ENABLE` is not set to true, or user auth_type is 'oauth'."
                 )
         else:
-            global_oauth_cfg = base_config.oauth_config # type: ignore
+            global_oauth_cfg = base_config.oauth_config  # type: ignore
 
         effective_cloud_id = cloud_id if cloud_id else global_oauth_cfg.cloud_id
         if not effective_cloud_id:
@@ -119,8 +122,7 @@ def _create_user_config_for_fetcher(
             expires_at=None,
             cloud_id=effective_cloud_id,
         )
-        calculated_username = username_for_config # Oauth can have username
-
+        calculated_username = username_for_config  # Oauth can have username
 
     elif auth_type == "pat":
         user_pat = credentials.get("personal_access_token")
@@ -136,14 +138,15 @@ def _create_user_config_for_fetcher(
     elif auth_type == "bearer_token":
         user_bearer_token = credentials.get("bearer_token")
         if not user_bearer_token:
-            raise ValueError("Generic Bearer token missing in credentials for user auth_type 'bearer_token'")
+            raise ValueError(
+                "Generic Bearer token missing in credentials for user auth_type 'bearer_token'"
+            )
         if cloud_id:
             logger.warning(
                 f"Cloud ID '{cloud_id}' provided with generic Bearer token authentication. "
                 "Generic Bearer token authentication typically uses the base URL directly and doesn't require cloud_id."
             )
         calculated_bearer_token = user_bearer_token
-
 
     # Now construct config_creation_args based on the target config type
     config_creation_args = {
@@ -154,9 +157,9 @@ def _create_user_config_for_fetcher(
         "https_proxy": base_config.https_proxy,
         "no_proxy": base_config.no_proxy,
         "socks_proxy": base_config.socks_proxy,
-        "custom_headers": base_config.custom_headers, # Preserve custom headers
+        "custom_headers": base_config.custom_headers,  # Preserve custom headers
         "username": calculated_username,
-        "api_token": calculated_api_token, # Will be None unless auth_type is basic
+        "api_token": calculated_api_token,  # Will be None unless auth_type is basic
         "personal_token": calculated_personal_token,
         "oauth_config": calculated_oauth_config,
     }

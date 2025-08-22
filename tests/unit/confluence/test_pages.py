@@ -845,6 +845,238 @@ class TestPagesMixin:
             assert result.id == "v1_123456789"
             assert result.title == title
 
+    def test_get_page_siblings_with_parent(self, pages_mixin):
+        """Test getting siblings for a page that has a parent."""
+        # Arrange
+        page_id = "123456"
+        parent_id = "789012"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock the page with ancestors (has parent)
+        page_data = {
+            "id": page_id,
+            "title": "Target Page",
+            "space": {"key": "DEMO"},
+            "ancestors": [{"id": parent_id, "title": "Parent Page"}],
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = page_data
+
+        # Mock get_page_children to return siblings
+        sibling_pages_data = {
+            "results": [
+                {
+                    "id": page_id,
+                    "title": "Target Page",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 1},
+                },
+                {
+                    "id": "456789",
+                    "title": "Sibling Page 1",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 2},
+                },
+                {
+                    "id": "654321",
+                    "title": "Sibling Page 2",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 1},
+                },
+            ]
+        }
+        pages_mixin.confluence.get_page_child_by_type.return_value = sibling_pages_data
+
+        # Act
+        result = pages_mixin.get_page_siblings(page_id=page_id, include_self=False)
+
+        # Assert
+        pages_mixin.confluence.get_page_by_id.assert_called_once_with(
+            page_id=page_id, expand="ancestors,space"
+        )
+        pages_mixin.confluence.get_page_child_by_type.assert_called_once_with(
+            page_id=parent_id, type="page", start=0, limit=200, expand="version"
+        )
+
+        # Should exclude the target page itself
+        assert len(result) == 2
+        assert result[0].id == "456789"
+        assert result[0].title == "Sibling Page 1"
+        assert result[1].id == "654321"
+        assert result[1].title == "Sibling Page 2"
+
+    def test_get_page_siblings_with_parent_include_self(self, pages_mixin):
+        """Test getting siblings for a page that has a parent, including self."""
+        # Arrange
+        page_id = "123456"
+        parent_id = "789012"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock the page with ancestors (has parent)
+        page_data = {
+            "id": page_id,
+            "title": "Target Page",
+            "space": {"key": "DEMO"},
+            "ancestors": [{"id": parent_id, "title": "Parent Page"}],
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = page_data
+
+        # Mock get_page_children to return siblings
+        sibling_pages_data = {
+            "results": [
+                {
+                    "id": page_id,
+                    "title": "Target Page",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 1},
+                },
+                {
+                    "id": "456789",
+                    "title": "Sibling Page 1",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 2},
+                },
+            ]
+        }
+        pages_mixin.confluence.get_page_child_by_type.return_value = sibling_pages_data
+
+        # Act
+        result = pages_mixin.get_page_siblings(page_id=page_id, include_self=True)
+
+        # Assert - should include the target page itself
+        assert len(result) == 2
+        assert result[0].id == page_id
+        assert result[0].title == "Target Page"
+        assert result[1].id == "456789"
+        assert result[1].title == "Sibling Page 1"
+
+    def test_get_page_siblings_root_page(self, pages_mixin):
+        """Test getting siblings for a root page (no parent)."""
+        # Arrange
+        page_id = "123456"
+        space_key = "DEMO"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock the page without ancestors (root page)
+        page_data = {
+            "id": page_id,
+            "title": "Root Page",
+            "space": {"key": space_key},
+            "ancestors": [],
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = page_data
+
+        # Mock get_all_pages_from_space to return all pages including root pages
+        all_space_pages = [
+            {
+                "id": page_id,
+                "title": "Root Page",
+                "space": {"key": space_key},
+                "ancestors": [],  # This is a root page
+                "version": {"number": 1},
+            },
+            {
+                "id": "789012",
+                "title": "Root Sibling 1",
+                "space": {"key": space_key},
+                "ancestors": [],  # This is also a root page
+                "version": {"number": 1},
+            },
+            {
+                "id": "345678",
+                "title": "Root Sibling 2",
+                "space": {"key": space_key},
+                "ancestors": [],  # This is also a root page
+                "version": {"number": 1},
+            },
+            {
+                "id": "999999",
+                "title": "Child Page",
+                "space": {"key": space_key},
+                "ancestors": [
+                    {"id": "111111"}
+                ],  # This has a parent, so not a root page
+                "version": {"number": 1},
+            },
+        ]
+        pages_mixin.confluence.get_all_pages_from_space.return_value = all_space_pages
+
+        # Act
+        result = pages_mixin.get_page_siblings(page_id=page_id, include_self=False)
+
+        # Assert
+        pages_mixin.confluence.get_page_by_id.assert_called_once_with(
+            page_id=page_id, expand="ancestors,space"
+        )
+        pages_mixin.confluence.get_all_pages_from_space.assert_called_once_with(
+            space=space_key, start=0, limit=200, expand="ancestors,version"
+        )
+
+        # Should return siblings without the current page (only root pages, excluding current)
+        assert len(result) == 2
+        assert result[0].id == "789012"
+        assert result[0].title == "Root Sibling 1"
+        assert result[1].id == "345678"
+        assert result[1].title == "Root Sibling 2"
+
+    def test_get_page_siblings_no_siblings(self, pages_mixin):
+        """Test getting siblings when page has no siblings."""
+        # Arrange
+        page_id = "123456"
+        parent_id = "789012"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock the page with ancestors (has parent)
+        page_data = {
+            "id": page_id,
+            "title": "Only Child",
+            "space": {"key": "DEMO"},
+            "ancestors": [{"id": parent_id, "title": "Parent Page"}],
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = page_data
+
+        # Mock get_page_children to return only the target page
+        sibling_pages_data = {
+            "results": [
+                {
+                    "id": page_id,
+                    "title": "Only Child",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 1},
+                }
+            ]
+        }
+        pages_mixin.confluence.get_page_child_by_type.return_value = sibling_pages_data
+
+        # Act
+        result = pages_mixin.get_page_siblings(page_id=page_id, include_self=False)
+
+        # Assert - should return empty list since only child and include_self=False
+        assert len(result) == 0
+
+    def test_get_page_siblings_invalid_page(self, pages_mixin):
+        """Test getting siblings for a non-existent page."""
+        # Arrange
+        page_id = "nonexistent"
+        pages_mixin.confluence.get_page_by_id.return_value = None
+
+        # Act
+        result = pages_mixin.get_page_siblings(page_id=page_id)
+
+        # Assert - should return empty list for non-existent page
+        assert len(result) == 0
+
+    def test_get_page_siblings_error_handling(self, pages_mixin):
+        """Test error handling in get_page_siblings."""
+        # Arrange
+        page_id = "123456"
+        pages_mixin.confluence.get_page_by_id.side_effect = Exception("API Error")
+
+        # Act
+        result = pages_mixin.get_page_siblings(page_id=page_id)
+
+        # Assert - should return empty list on error, not raise exception
+        assert len(result) == 0
+
 
 class TestPagesOAuthMixin:
     """Tests for PagesMixin with OAuth authentication."""
@@ -1108,3 +1340,1620 @@ class TestPagesOAuthMixin:
 
             # Verify result
             assert result is True
+
+
+class TestGetPageBreadcrumbs:
+    """Tests for the get_page_breadcrumbs method."""
+
+    @pytest.fixture
+    def pages_mixin(self, confluence_client):
+        """Create a PagesMixin instance for testing."""
+        with patch(
+            "mcp_atlassian.confluence.pages.ConfluenceClient.__init__"
+        ) as mock_init:
+            mock_init.return_value = None
+            mixin = PagesMixin()
+            mixin.confluence = confluence_client.confluence
+            mixin.config = confluence_client.config
+            mixin.preprocessor = confluence_client.preprocessor
+            return mixin
+
+    def test_get_page_breadcrumbs_basic(self, pages_mixin):
+        """Test basic breadcrumb functionality."""
+        # Arrange
+        page_id = "123456"
+
+        # Mock ancestors response (returned in closest-to-farthest order)
+        ancestors_data = [
+            {
+                "id": "parent123",
+                "title": "Parent Page",
+                "space": {"key": "PROJ", "name": "Project Space"},
+                "type": "page",
+                "status": "current",
+            },
+            {
+                "id": "grandparent123",
+                "title": "Grandparent Page",
+                "space": {"key": "PROJ", "name": "Project Space"},
+                "type": "page",
+                "status": "current",
+            },
+        ]
+        pages_mixin.confluence.get_page_ancestors.return_value = ancestors_data
+
+        # Mock current page response
+        current_page_data = {
+            "id": page_id,
+            "title": "Current Page",
+            "space": {"key": "PROJ", "name": "Project Space"},
+            "body": {"storage": {"value": "<p>Current page content</p>"}},
+            "version": {"number": 1},
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = current_page_data
+        pages_mixin.preprocessor.process_html_content.return_value = (
+            "<p>Processed HTML</p>",
+            "Processed Markdown",
+        )
+
+        # Act
+        result = pages_mixin.get_page_breadcrumbs(page_id, include_content=False)
+
+        # Assert
+        assert len(result) == 3  # grandparent + parent + current
+
+        # Verify breadcrumb order (root → parent → current)
+        assert result[0].id == "grandparent123"
+        assert result[0].title == "Grandparent Page"
+        assert result[1].id == "parent123"
+        assert result[1].title == "Parent Page"
+        assert result[2].id == page_id
+        assert result[2].title == "Current Page"
+
+        # Verify all are ConfluencePage instances
+        for page in result:
+            assert isinstance(page, ConfluencePage)
+
+    def test_get_page_breadcrumbs_with_content(self, pages_mixin):
+        """Test breadcrumbs with content included."""
+        # Arrange
+        page_id = "123456"
+
+        # Mock ancestors response
+        ancestors_data = [
+            {
+                "id": "parent123",
+                "title": "Parent Page",
+                "space": {"key": "PROJ", "name": "Project Space"},
+                "type": "page",
+                "status": "current",
+            }
+        ]
+        pages_mixin.confluence.get_page_ancestors.return_value = ancestors_data
+
+        # Mock current page response with content
+        current_page_data = {
+            "id": page_id,
+            "title": "Current Page",
+            "space": {"key": "PROJ", "name": "Project Space"},
+            "body": {"storage": {"value": "<p>Current page content</p>"}},
+            "version": {"number": 1},
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = current_page_data
+        pages_mixin.preprocessor.process_html_content.return_value = (
+            "<p>Processed HTML</p>",
+            "Processed Markdown",
+        )
+
+        # Act
+        result = pages_mixin.get_page_breadcrumbs(page_id, include_content=True)
+
+        # Assert
+        assert len(result) == 2  # parent + current
+
+        # Verify content is included for current page
+        assert result[1].content == "Processed Markdown"
+
+        # Verify get_page_content was called with include_content=True
+        pages_mixin.confluence.get_page_by_id.assert_called_with(
+            page_id=page_id, expand="body.storage,version,space,children.attachment"
+        )
+
+    def test_get_page_breadcrumbs_root_page(self, pages_mixin):
+        """Test breadcrumbs for a root page (no ancestors)."""
+        # Arrange
+        page_id = "123456"
+
+        # Mock empty ancestors response
+        pages_mixin.confluence.get_page_ancestors.return_value = []
+
+        # Mock current page response
+        current_page_data = {
+            "id": page_id,
+            "title": "Root Page",
+            "space": {"key": "PROJ", "name": "Project Space"},
+            "body": {"storage": {"value": "<p>Root page content</p>"}},
+            "version": {"number": 1},
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = current_page_data
+        pages_mixin.preprocessor.process_html_content.return_value = (
+            "<p>Processed HTML</p>",
+            "Processed Markdown",
+        )
+
+        # Act
+        result = pages_mixin.get_page_breadcrumbs(page_id)
+
+        # Assert
+        assert len(result) == 1  # Only current page
+        assert result[0].id == page_id
+        assert result[0].title == "Root Page"
+
+    def test_get_page_breadcrumbs_deep_hierarchy(self, pages_mixin):
+        """Test breadcrumbs for a deeply nested page."""
+        # Arrange
+        page_id = "123456"
+
+        # Mock deep ancestors response (5 levels)
+        ancestors_data = [
+            {
+                "id": "level1",
+                "title": "Level 1",
+                "space": {"key": "PROJ"},
+                "type": "page",
+                "status": "current",
+            },
+            {
+                "id": "level2",
+                "title": "Level 2",
+                "space": {"key": "PROJ"},
+                "type": "page",
+                "status": "current",
+            },
+            {
+                "id": "level3",
+                "title": "Level 3",
+                "space": {"key": "PROJ"},
+                "type": "page",
+                "status": "current",
+            },
+            {
+                "id": "level4",
+                "title": "Level 4",
+                "space": {"key": "PROJ"},
+                "type": "page",
+                "status": "current",
+            },
+            {
+                "id": "level5",
+                "title": "Level 5",
+                "space": {"key": "PROJ"},
+                "type": "page",
+                "status": "current",
+            },
+        ]
+        pages_mixin.confluence.get_page_ancestors.return_value = ancestors_data
+
+        # Mock current page response
+        current_page_data = {
+            "id": page_id,
+            "title": "Deep Page",
+            "space": {"key": "PROJ", "name": "Project Space"},
+            "body": {"storage": {"value": "<p>Deep page content</p>"}},
+            "version": {"number": 1},
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = current_page_data
+        pages_mixin.preprocessor.process_html_content.return_value = (
+            "<p>Processed HTML</p>",
+            "Processed Markdown",
+        )
+
+        # Act
+        result = pages_mixin.get_page_breadcrumbs(page_id)
+
+        # Assert
+        assert len(result) == 6  # 5 ancestors + current
+
+        # Verify breadcrumb order (root → ... → current)
+        assert result[0].id == "level5"  # Topmost ancestor
+        assert result[1].id == "level4"
+        assert result[2].id == "level3"
+        assert result[3].id == "level2"
+        assert result[4].id == "level1"  # Immediate parent
+        assert result[5].id == page_id  # Current page
+
+    def test_get_page_breadcrumbs_ancestors_error(self, pages_mixin):
+        """Test breadcrumbs when ancestors retrieval fails."""
+        # Arrange
+        page_id = "123456"
+
+        # Mock ancestors error - should return empty list
+        pages_mixin.confluence.get_page_ancestors.side_effect = Exception("API Error")
+
+        # Mock current page response
+        current_page_data = {
+            "id": page_id,
+            "title": "Current Page",
+            "space": {"key": "PROJ", "name": "Project Space"},
+            "body": {"storage": {"value": "<p>Current page content</p>"}},
+            "version": {"number": 1},
+        }
+        pages_mixin.confluence.get_page_by_id.return_value = current_page_data
+        pages_mixin.preprocessor.process_html_content.return_value = (
+            "<p>Processed HTML</p>",
+            "Processed Markdown",
+        )
+
+        # Act
+        result = pages_mixin.get_page_breadcrumbs(page_id)
+
+        # Assert - should still return current page even if ancestors fail
+        assert len(result) == 1
+        assert result[0].id == page_id
+        assert result[0].title == "Current Page"
+
+    def test_get_page_breadcrumbs_current_page_error(self, pages_mixin):
+        """Test breadcrumbs when current page retrieval fails."""
+        # Arrange
+        page_id = "nonexistent"
+
+        # Mock ancestors response
+        pages_mixin.confluence.get_page_ancestors.return_value = []
+
+        # Mock current page error
+        pages_mixin.confluence.get_page_by_id.side_effect = Exception("Page not found")
+
+        # Act & Assert - should raise exception when current page fails
+        with pytest.raises(Exception, match="Page not found"):
+            pages_mixin.get_page_breadcrumbs(page_id)
+
+
+class TestGetPageDescendants:
+    """Tests for the get_page_descendants method."""
+
+    @pytest.fixture
+    def pages_mixin(self, confluence_client):
+        """Create a PagesMixin instance for testing."""
+        with patch(
+            "mcp_atlassian.confluence.pages.ConfluenceClient.__init__"
+        ) as mock_init:
+            mock_init.return_value = None
+            mixin = PagesMixin()
+            mixin.confluence = confluence_client.confluence
+            mixin.config = confluence_client.config
+            mixin.preprocessor = confluence_client.preprocessor
+            return mixin
+
+    def test_get_page_descendants_single_level(self, pages_mixin):
+        """Test getting descendants with max_depth=1 (direct children only)."""
+        # Arrange
+        page_id = "root123"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock direct children response
+        children_data = {
+            "results": [
+                {
+                    "id": "child1",
+                    "title": "Child Page 1",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 1},
+                },
+                {
+                    "id": "child2",
+                    "title": "Child Page 2",
+                    "space": {"key": "DEMO"},
+                    "version": {"number": 1},
+                },
+            ]
+        }
+
+        # Mock get_page_children to return children for root, empty for children
+        def mock_get_children(page_id, **kwargs):
+            if page_id == "root123":
+                child_pages = []
+                for child_data in children_data["results"]:
+                    page_model = ConfluencePage.from_api_response(
+                        child_data,
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                    child_pages.append(page_model)
+                return child_pages
+            return []  # No grandchildren
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=mock_get_children
+        ):
+            # Act
+            result = pages_mixin.get_page_descendants(page_id, max_depth=1)
+
+            # Assert
+            assert len(result) == 2
+            assert result[0].id == "child1"
+            assert result[0].title == "Child Page 1"
+            assert result[1].id == "child2"
+            assert result[1].title == "Child Page 2"
+
+    def test_get_page_descendants_multi_level(self, pages_mixin):
+        """Test getting descendants with multiple levels (depth=2)."""
+        # Arrange
+        page_id = "root123"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock hierarchical structure: root -> child1, child2 -> grandchild1, grandchild2
+        def mock_get_children(page_id, **kwargs):
+            if page_id == "root123":
+                # Root has 2 children
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "child1",
+                            "title": "Child Page 1",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    ),
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "child2",
+                            "title": "Child Page 2",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    ),
+                ]
+            elif page_id == "child1":
+                # Child1 has 1 grandchild
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "grandchild1",
+                            "title": "Grandchild Page 1",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            elif page_id == "child2":
+                # Child2 has 1 grandchild
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "grandchild2",
+                            "title": "Grandchild Page 2",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            return []  # No more children
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=mock_get_children
+        ):
+            # Act
+            result = pages_mixin.get_page_descendants(page_id, max_depth=2)
+
+            # Assert
+            assert len(result) == 4
+            # Children should come first (breadth-first)
+            assert result[0].id == "child1"
+            assert result[1].id == "child2"
+            # Then grandchildren
+            assert result[2].id == "grandchild1"
+            assert result[3].id == "grandchild2"
+
+    def test_get_page_descendants_unlimited_depth(self, pages_mixin):
+        """Test getting descendants with unlimited depth."""
+        # Arrange
+        page_id = "root123"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock deep hierarchy: root -> child -> grandchild -> great-grandchild
+        def mock_get_children(page_id, **kwargs):
+            if page_id == "root123":
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "child1",
+                            "title": "Child Page 1",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            elif page_id == "child1":
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "grandchild1",
+                            "title": "Grandchild Page 1",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            elif page_id == "grandchild1":
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "greatgrandchild1",
+                            "title": "Great-Grandchild Page 1",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            return []
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=mock_get_children
+        ):
+            # Act
+            result = pages_mixin.get_page_descendants(page_id, max_depth=None)
+
+            # Assert
+            assert len(result) == 3
+            assert result[0].id == "child1"
+            assert result[1].id == "grandchild1"
+            assert result[2].id == "greatgrandchild1"
+
+    def test_get_page_descendants_with_content(self, pages_mixin):
+        """Test getting descendants with content included."""
+        # Arrange
+        page_id = "root123"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock children with content
+        def mock_get_children(page_id, **kwargs):
+            if page_id == "root123":
+                child_page = ConfluencePage.from_api_response(
+                    {
+                        "id": "child1",
+                        "title": "Child with Content",
+                        "space": {"key": "DEMO"},
+                        "version": {"number": 1},
+                        "body": {"storage": {"value": "<p>Child content</p>"}},
+                    },
+                    base_url=pages_mixin.config.url,
+                    include_body=True,
+                    content_override="Processed child content",
+                    content_format="markdown",
+                )
+                return [child_page]
+            return []
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=mock_get_children
+        ):
+            # Act
+            result = pages_mixin.get_page_descendants(
+                page_id, max_depth=1, include_content=True
+            )
+
+            # Assert
+            assert len(result) == 1
+            assert result[0].id == "child1"
+            assert result[0].content == "Processed child content"
+
+    def test_get_page_descendants_no_children(self, pages_mixin):
+        """Test getting descendants for a page with no children."""
+        # Arrange
+        page_id = "leaf123"
+
+        with patch.object(pages_mixin, "get_page_children", return_value=[]):
+            # Act
+            result = pages_mixin.get_page_descendants(page_id)
+
+            # Assert
+            assert len(result) == 0
+
+    def test_get_page_descendants_limit_enforcement(self, pages_mixin):
+        """Test that the limit parameter is enforced."""
+        # Arrange
+        page_id = "root123"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock many children
+        def mock_get_children(page_id, **kwargs):
+            if page_id == "root123":
+                children = []
+                for i in range(10):  # Create 10 children
+                    child = ConfluencePage.from_api_response(
+                        {
+                            "id": f"child{i}",
+                            "title": f"Child Page {i}",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                    children.append(child)
+                return children
+            return []
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=mock_get_children
+        ):
+            # Act - limit to 5 descendants
+            result = pages_mixin.get_page_descendants(page_id, limit=5)
+
+            # Assert
+            assert len(result) == 5
+            for i in range(5):
+                assert result[i].id == f"child{i}"
+
+    def test_get_page_descendants_depth_zero(self, pages_mixin):
+        """Test getting descendants with max_depth=0 (no descendants)."""
+        # Arrange
+        page_id = "root123"
+
+        with patch.object(pages_mixin, "get_page_children") as mock_get_children:
+            # Act
+            result = pages_mixin.get_page_descendants(page_id, max_depth=0)
+
+            # Assert
+            assert len(result) == 0
+            mock_get_children.assert_not_called()  # Should not fetch children at all
+
+    def test_get_page_descendants_circular_reference_protection(self, pages_mixin):
+        """Test protection against circular references."""
+        # Arrange
+        page_id = "root123"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock circular reference: root -> child1 -> child2 -> root (would be infinite)
+        def mock_get_children(page_id, **kwargs):
+            if page_id == "root123":
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "child1",
+                            "title": "Child Page 1",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            elif page_id == "child1":
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "child2",
+                            "title": "Child Page 2",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            elif page_id == "child2":
+                # This would create a circular reference back to root
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "root123",  # Circular reference!
+                            "title": "Root Page (circular)",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    )
+                ]
+            return []
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=mock_get_children
+        ):
+            # Act
+            result = pages_mixin.get_page_descendants(page_id, max_depth=None)
+
+            # Assert - should stop at child2, not continue infinitely
+            assert len(result) == 2
+            assert result[0].id == "child1"
+            assert result[1].id == "child2"
+
+    def test_get_page_descendants_error_handling(self, pages_mixin):
+        """Test error handling when children fetching fails."""
+        # Arrange
+        page_id = "root123"
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=Exception("API Error")
+        ):
+            # Act
+            result = pages_mixin.get_page_descendants(page_id)
+
+            # Assert - should return empty list on error, not raise exception
+            assert len(result) == 0
+
+    def test_get_page_descendants_partial_error(self, pages_mixin):
+        """Test handling when some children succeed and others fail."""
+        # Arrange
+        page_id = "root123"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock mixed success/failure
+        def mock_get_children(page_id, **kwargs):
+            if page_id == "root123":
+                return [
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "child1",
+                            "title": "Good Child",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    ),
+                    ConfluencePage.from_api_response(
+                        {
+                            "id": "child2",
+                            "title": "Bad Child",
+                            "space": {"key": "DEMO"},
+                            "version": {"number": 1},
+                        },
+                        base_url=pages_mixin.config.url,
+                        include_body=False,
+                    ),
+                ]
+            elif page_id == "child1":
+                return []  # No grandchildren
+            elif page_id == "child2":
+                raise Exception("Failed to get children for child2")
+            return []
+
+        with patch.object(
+            pages_mixin, "get_page_children", side_effect=mock_get_children
+        ):
+            # Act
+            result = pages_mixin.get_page_descendants(page_id, max_depth=2)
+
+            # Assert - should return partial results despite one failure
+            assert len(result) == 2
+            assert result[0].id == "child1"
+            assert result[1].id == "child2"
+
+    def test_get_page_descendants_invalid_parameters(self, pages_mixin):
+        """Test parameter validation and defaults."""
+        # Arrange
+        page_id = "root123"
+
+        with patch.object(pages_mixin, "get_page_children", return_value=[]):
+            # Act & Assert - invalid limit should use default
+            result1 = pages_mixin.get_page_descendants(page_id, limit=0)
+            assert len(result1) == 0
+
+            result2 = pages_mixin.get_page_descendants(page_id, limit=1000)
+            assert len(result2) == 0
+
+            # Invalid max_depth should use None (unlimited)
+            result3 = pages_mixin.get_page_descendants(page_id, max_depth=-1)
+            assert len(result3) == 0
+
+
+class TestGetPageByPath:
+    """Tests for the get_page_by_path method."""
+
+    @pytest.fixture
+    def pages_mixin(self, confluence_client):
+        """Create a PagesMixin instance for testing."""
+        with patch(
+            "mcp_atlassian.confluence.pages.ConfluenceClient.__init__"
+        ) as mock_init:
+            mock_init.return_value = None
+            mixin = PagesMixin()
+            mixin.confluence = confluence_client.confluence
+            mixin.config = confluence_client.config
+            mixin.preprocessor = confluence_client.preprocessor
+            return mixin
+
+    def test_get_page_by_path_single_level(self, pages_mixin):
+        """Test getting a page with a single-level path (root page)."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages response
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "root1",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            ),
+            ConfluencePage.from_api_response(
+                {
+                    "id": "root2",
+                    "title": "Meetings",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            ),
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "root1",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            },
+            {
+                "id": "root2",
+                "title": "Meetings",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            },
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            # Act
+            result = pages_mixin.get_page_by_path(space_key, path)
+
+            # Assert
+            assert result is not None
+            assert result.id == "root1"
+            assert result.title == "Documentation"
+            pages_mixin.confluence.get_all_pages_from_space.assert_called_once_with(
+                space=space_key, start=0, limit=200, expand="ancestors,version"
+            )
+
+    def test_get_page_by_path_multi_level(self, pages_mixin):
+        """Test getting a page with a multi-level path."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation/API/REST"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages response
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock API children response
+        api_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "api_page",
+                    "title": "API",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock REST children response
+        rest_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "rest_page",
+                    "title": "REST",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(pages_mixin, "get_page_children") as mock_get_children:
+                # Configure children responses based on page ID
+                def mock_children_side_effect(page_id, **kwargs):
+                    if page_id == "doc_root":
+                        return api_children
+                    elif page_id == "api_page":
+                        return rest_children
+                    return []
+
+                mock_get_children.side_effect = mock_children_side_effect
+
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert
+                assert result is not None
+                assert result.id == "rest_page"
+                assert result.title == "REST"
+
+                # Verify the navigation calls
+                assert mock_get_children.call_count == 2
+                mock_get_children.assert_any_call(
+                    page_id="doc_root",
+                    start=0,
+                    limit=200,
+                    expand="version",
+                    convert_to_markdown=False,
+                )
+                mock_get_children.assert_any_call(
+                    page_id="api_page",
+                    start=0,
+                    limit=200,
+                    expand="version",
+                    convert_to_markdown=False,
+                )
+
+    def test_get_page_by_path_with_content(self, pages_mixin):
+        """Test getting a page by path with content included."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages response
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock page content response
+        content_page = ConfluencePage.from_api_response(
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "version": {"number": 1},
+                "body": {"storage": {"value": "<p>Documentation content</p>"}},
+            },
+            base_url=pages_mixin.config.url,
+            include_body=True,
+            content_override="Documentation content in markdown",
+            content_format="markdown",
+        )
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(
+                pages_mixin, "get_page_content", return_value=content_page
+            ):
+                # Act
+                result = pages_mixin.get_page_by_path(
+                    space_key, path, include_content=True
+                )
+
+                # Assert
+                assert result is not None
+                assert result.id == "doc_root"
+                assert result.title == "Documentation"
+                assert result.content == "Documentation content in markdown"
+                pages_mixin.get_page_content.assert_called_once_with(
+                    page_id="doc_root", convert_to_markdown=True
+                )
+
+    def test_get_page_by_path_case_insensitive(self, pages_mixin):
+        """Test that path matching is case-insensitive."""
+        # Arrange
+        space_key = "DEMO"
+        path = "documentation/api"  # lowercase
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages with mixed case titles
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",  # Title case
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock API children with uppercase
+        api_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "api_page",
+                    "title": "API",  # Uppercase
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",  # Title case
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(
+                pages_mixin, "get_page_children", return_value=api_children
+            ):
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert
+                assert result is not None
+                assert result.id == "api_page"
+                assert result.title == "API"
+
+    def test_get_page_by_path_backslash_separator(self, pages_mixin):
+        """Test path with backslash separators (Windows-style)."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation\\API\\REST"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Set up the same hierarchy as multi-level test
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        api_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "api_page",
+                    "title": "API",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        rest_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "rest_page",
+                    "title": "REST",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(pages_mixin, "get_page_children") as mock_get_children:
+
+                def mock_children_side_effect(page_id, **kwargs):
+                    if page_id == "doc_root":
+                        return api_children
+                    elif page_id == "api_page":
+                        return rest_children
+                    return []
+
+                mock_get_children.side_effect = mock_children_side_effect
+
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert
+                assert result is not None
+                assert result.id == "rest_page"
+                assert result.title == "REST"
+
+    def test_get_page_by_path_mixed_separators(self, pages_mixin):
+        """Test path with mixed separators."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation/API\\REST"  # Mixed separators
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Set up the same hierarchy as multi-level test
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        api_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "api_page",
+                    "title": "API",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        rest_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "rest_page",
+                    "title": "REST",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(pages_mixin, "get_page_children") as mock_get_children:
+
+                def mock_children_side_effect(page_id, **kwargs):
+                    if page_id == "doc_root":
+                        return api_children
+                    elif page_id == "api_page":
+                        return rest_children
+                    return []
+
+                mock_get_children.side_effect = mock_children_side_effect
+
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert
+                assert result is not None
+                assert result.id == "rest_page"
+
+    def test_get_page_by_path_path_not_found(self, pages_mixin):
+        """Test when the path doesn't exist."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Nonexistent/Page"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages that don't contain "Nonexistent"
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "other_root",
+                "title": "Other Root",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            # Act
+            result = pages_mixin.get_page_by_path(space_key, path)
+
+            # Assert
+            assert result is None
+
+    def test_get_page_by_path_intermediate_page_has_no_children(self, pages_mixin):
+        """Test when an intermediate page has no children but path continues."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation/Nonexistent"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(
+                pages_mixin, "get_page_children", return_value=[]
+            ):  # No children
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert
+                assert result is None
+
+    def test_get_page_by_path_empty_space_key(self, pages_mixin):
+        """Test with empty space key."""
+        # Act
+        result = pages_mixin.get_page_by_path("", "Documentation")
+
+        # Assert
+        assert result is None
+
+    def test_get_page_by_path_empty_path(self, pages_mixin):
+        """Test with empty path."""
+        # Act
+        result = pages_mixin.get_page_by_path("DEMO", "")
+
+        # Assert
+        assert result is None
+
+    def test_get_page_by_path_whitespace_only_path(self, pages_mixin):
+        """Test with whitespace-only path."""
+        # Act
+        result = pages_mixin.get_page_by_path("DEMO", "   ")
+
+        # Assert
+        assert result is None
+
+    def test_get_page_by_path_path_with_empty_segments(self, pages_mixin):
+        """Test path with empty segments (double slashes)."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation//API"  # Double slash creates empty segment
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock API children
+        api_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "api_page",
+                    "title": "API",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(
+                pages_mixin, "get_page_children", return_value=api_children
+            ):
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert - Should find API page despite empty segment
+                assert result is not None
+                assert result.id == "api_page"
+                assert result.title == "API"
+
+    def test_get_page_by_path_whitespace_in_segments(self, pages_mixin):
+        """Test path with whitespace around segments."""
+        # Arrange
+        space_key = "DEMO"
+        path = " Documentation / API "  # Whitespace around segments
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock API children
+        api_children = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "api_page",
+                    "title": "API",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(
+                pages_mixin, "get_page_children", return_value=api_children
+            ):
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert - Should find API page after trimming whitespace
+                assert result is not None
+                assert result.id == "api_page"
+                assert result.title == "API"
+
+    def test_get_page_by_path_no_root_pages(self, pages_mixin):
+        """Test when space has no root pages."""
+        # Arrange
+        space_key = "EMPTY"
+        path = "Documentation"
+
+        with patch.object(
+            pages_mixin.confluence, "get_all_pages_from_space", return_value=[]
+        ):
+            # Act
+            result = pages_mixin.get_page_by_path(space_key, path)
+
+            # Assert
+            assert result is None
+
+    def test_get_page_by_path_error_in_root_pages(self, pages_mixin):
+        """Test error handling when getting root pages fails."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation"
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            side_effect=Exception("API Error"),
+        ):
+            # Act
+            result = pages_mixin.get_page_by_path(space_key, path)
+
+            # Assert
+            assert result is None
+
+    def test_get_page_by_path_error_in_children(self, pages_mixin):
+        """Test error handling when getting children fails."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation/API"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(
+                pages_mixin,
+                "get_page_children",
+                side_effect=Exception("Children API Error"),
+            ):
+                # Act
+                result = pages_mixin.get_page_by_path(space_key, path)
+
+                # Assert
+                assert result is None
+
+    def test_get_page_by_path_error_in_content_fetch(self, pages_mixin):
+        """Test error handling when getting page content fails."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            )
+        ]
+
+        # Mock all_space_pages response with root pages
+        all_space_pages = [
+            {
+                "id": "doc_root",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            }
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            with patch.object(
+                pages_mixin,
+                "get_page_content",
+                side_effect=Exception("Content API Error"),
+            ):
+                # Act
+                result = pages_mixin.get_page_by_path(
+                    space_key, path, include_content=True
+                )
+
+                # Assert
+                assert result is None
+
+    def test_get_page_by_path_duplicate_titles_first_match(self, pages_mixin):
+        """Test that the first match is returned when there are duplicate titles."""
+        # Arrange
+        space_key = "DEMO"
+        path = "Documentation"
+        pages_mixin.config.url = "https://example.atlassian.net/wiki"
+
+        # Mock root pages with duplicate titles
+        root_pages = [
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root_1",
+                    "title": "Documentation",
+                    "space": {"key": space_key},
+                    "version": {"number": 1},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            ),
+            ConfluencePage.from_api_response(
+                {
+                    "id": "doc_root_2",
+                    "title": "Documentation",  # Duplicate title
+                    "space": {"key": space_key},
+                    "version": {"number": 2},
+                },
+                base_url=pages_mixin.config.url,
+                include_body=False,
+            ),
+        ]
+
+        # Mock all_space_pages response with root pages having duplicate titles
+        all_space_pages = [
+            {
+                "id": "doc_root_1",
+                "title": "Documentation",
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 1},
+            },
+            {
+                "id": "doc_root_2",
+                "title": "Documentation",  # Duplicate title
+                "space": {"key": space_key},
+                "ancestors": [],  # Root page
+                "version": {"number": 2},
+            },
+        ]
+
+        with patch.object(
+            pages_mixin.confluence,
+            "get_all_pages_from_space",
+            return_value=all_space_pages,
+        ):
+            # Act
+            result = pages_mixin.get_page_by_path(space_key, path)
+
+            # Assert - Should return the first match
+            assert result is not None
+            assert result.id == "doc_root_1"
+            assert result.title == "Documentation"

@@ -39,13 +39,67 @@ def mock_confluence_fetcher():
     }
     mock_page.content = "This is a test page content in Markdown"
 
+    # Mock root page for get_space_root_pages
+    mock_root_page = MagicMock(spec=ConfluencePage)
+    mock_root_page.to_simplified_dict.return_value = {
+        "id": "root123",
+        "title": "Welcome to Test Space",
+        "url": "https://example.atlassian.net/wiki/spaces/TEST/pages/root123/Welcome+to+Test+Space",
+        "content": {
+            "value": "# Welcome\nThis is a root page with no parent.",
+            "format": "markdown",
+        },
+        "space": {"key": "TEST", "name": "Test Space"},
+        "ancestors": [],  # No ancestors = root page
+    }
+    mock_root_page.content = "# Welcome\nThis is a root page with no parent."
+
     # Set up mock responses for each method
     mock_fetcher.search.return_value = [mock_page]
     mock_fetcher.get_page_content.return_value = mock_page
     mock_fetcher.get_page_children.return_value = [mock_page]
+    mock_fetcher.get_page_descendants.return_value = [mock_page]
+    mock_fetcher.get_page_siblings.return_value = [mock_page]
+    mock_fetcher.get_space_root_pages.return_value = [mock_root_page]
+    mock_fetcher.get_page_breadcrumbs.return_value = [mock_root_page, mock_page]
     mock_fetcher.create_page.return_value = mock_page
     mock_fetcher.update_page.return_value = mock_page
     mock_fetcher.delete_page.return_value = True
+
+    # Mock get_space_pages_flat method
+    mock_flat_pages = []
+    for i in range(5):  # Create 5 mock pages for flat collection
+        mock_flat_page = MagicMock(spec=ConfluencePage)
+        mock_flat_page.to_simplified_dict.return_value = {
+            "id": f"flat{i}",
+            "title": f"Flat Page {i}",
+            "url": f"https://example.atlassian.net/wiki/spaces/TEST/pages/flat{i}/Flat+Page+{i}",
+            "content": {
+                "value": f"This is flat page {i} content in Markdown",
+                "format": "markdown",
+            },
+            "space": {"key": "TEST", "name": "Test Space"},
+        }
+        mock_flat_page.content = f"This is flat page {i} content in Markdown"
+        mock_flat_pages.append(mock_flat_page)
+    mock_fetcher.get_space_pages_flat.return_value = mock_flat_pages
+
+    # Mock get_page_by_path method
+    mock_path_page = MagicMock(spec=ConfluencePage)
+    mock_path_page.to_simplified_dict.return_value = {
+        "id": "path123",
+        "title": "Documentation Guidelines",
+        "url": "https://example.atlassian.net/wiki/spaces/TEST/pages/path123/Documentation+Guidelines",
+        "content": {
+            "value": "# Documentation Guidelines\nThis page contains our documentation standards.",
+            "format": "markdown",
+        },
+        "space": {"key": "TEST", "name": "Test Space"},
+    }
+    mock_path_page.content = (
+        "# Documentation Guidelines\nThis page contains our documentation standards."
+    )
+    mock_fetcher.get_page_by_path.return_value = mock_path_page
 
     # Mock comment
     mock_comment = MagicMock()
@@ -136,7 +190,13 @@ def test_confluence_mcp(mock_confluence_fetcher, mock_base_confluence_config):
         get_comments,
         get_labels,
         get_page,
+        get_page_breadcrumbs,
+        get_page_by_path,
         get_page_children,
+        get_page_descendants,
+        get_page_siblings,
+        get_space_pages_flat,
+        get_space_root_pages,
         search,
         search_user,
         update_page,
@@ -161,7 +221,13 @@ def test_confluence_mcp(mock_confluence_fetcher, mock_base_confluence_config):
     confluence_sub_mcp = FastMCP(name="TestConfluenceSubMCP")
     confluence_sub_mcp.tool()(search)
     confluence_sub_mcp.tool()(get_page)
+    confluence_sub_mcp.tool()(get_page_breadcrumbs)
+    confluence_sub_mcp.tool()(get_page_by_path)
     confluence_sub_mcp.tool()(get_page_children)
+    confluence_sub_mcp.tool()(get_page_descendants)
+    confluence_sub_mcp.tool()(get_page_siblings)
+    confluence_sub_mcp.tool()(get_space_pages_flat)
+    confluence_sub_mcp.tool()(get_space_root_pages)
     confluence_sub_mcp.tool()(get_comments)
     confluence_sub_mcp.tool()(add_comment)
     confluence_sub_mcp.tool()(get_labels)
@@ -189,7 +255,13 @@ def no_fetcher_test_confluence_mcp(mock_base_confluence_config):
         get_comments,
         get_labels,
         get_page,
+        get_page_breadcrumbs,
+        get_page_by_path,
         get_page_children,
+        get_page_descendants,
+        get_page_siblings,
+        get_space_pages_flat,
+        get_space_root_pages,
         search,
         search_user,
         update_page,
@@ -216,7 +288,13 @@ def no_fetcher_test_confluence_mcp(mock_base_confluence_config):
     confluence_sub_mcp = FastMCP(name="NoFetcherTestConfluenceSubMCP")
     confluence_sub_mcp.tool()(search)
     confluence_sub_mcp.tool()(get_page)
+    confluence_sub_mcp.tool()(get_page_breadcrumbs)
+    confluence_sub_mcp.tool()(get_page_by_path)
     confluence_sub_mcp.tool()(get_page_children)
+    confluence_sub_mcp.tool()(get_page_descendants)
+    confluence_sub_mcp.tool()(get_page_siblings)
+    confluence_sub_mcp.tool()(get_space_pages_flat)
+    confluence_sub_mcp.tool()(get_space_root_pages)
     confluence_sub_mcp.tool()(get_comments)
     confluence_sub_mcp.tool()(add_comment)
     confluence_sub_mcp.tool()(get_labels)
@@ -272,7 +350,13 @@ async def private_server_bearer_client(
         get_comments,
         get_labels,
         get_page,
+        get_page_breadcrumbs,
+        get_page_by_path,
         get_page_children,
+        get_page_descendants,
+        get_page_siblings,
+        get_space_pages_flat,
+        get_space_root_pages,
         search,
         search_user,
         update_page,
@@ -300,7 +384,13 @@ async def private_server_bearer_client(
     confluence_sub_mcp = FastMCP(name="PrivateBearerTestConfluenceSubMCP")
     confluence_sub_mcp.tool()(search)
     confluence_sub_mcp.tool()(get_page)
+    confluence_sub_mcp.tool()(get_page_breadcrumbs)
+    confluence_sub_mcp.tool()(get_page_by_path)
     confluence_sub_mcp.tool()(get_page_children)
+    confluence_sub_mcp.tool()(get_page_descendants)
+    confluence_sub_mcp.tool()(get_page_siblings)
+    confluence_sub_mcp.tool()(get_space_pages_flat)
+    confluence_sub_mcp.tool()(get_space_root_pages)
     confluence_sub_mcp.tool()(get_comments)
     confluence_sub_mcp.tool()(add_comment)
     confluence_sub_mcp.tool()(get_labels)
@@ -622,6 +712,180 @@ async def test_update_page_with_numeric_parent_id(client, mock_confluence_fetche
 
 
 @pytest.mark.anyio
+async def test_get_space_root_pages_basic(client, mock_confluence_fetcher):
+    """Test get_space_root_pages with basic parameters."""
+    response = await client.call_tool(
+        "confluence_get_space_root_pages", {"space_key": "TEST"}
+    )
+
+    mock_confluence_fetcher.get_space_root_pages.assert_called_once_with(
+        space_key="TEST",
+        start=0,
+        limit=50,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert isinstance(result_data, dict)
+    assert "space_key" in result_data
+    assert result_data["space_key"] == "TEST"
+    assert "count" in result_data
+    assert "results" in result_data
+    assert isinstance(result_data["results"], list)
+    assert len(result_data["results"]) == 1
+    assert result_data["results"][0]["title"] == "Welcome to Test Space"
+    assert result_data["results"][0]["id"] == "root123"
+
+
+@pytest.mark.anyio
+async def test_get_space_root_pages_custom_parameters(client, mock_confluence_fetcher):
+    """Test get_space_root_pages with custom limit, start, and content options."""
+    response = await client.call_tool(
+        "confluence_get_space_root_pages",
+        {
+            "space_key": "CUSTOM",
+            "limit": 25,
+            "start": 10,
+            "convert_to_markdown": False,
+            "include_content": False,
+        },
+    )
+
+    mock_confluence_fetcher.get_space_root_pages.assert_called_once_with(
+        space_key="CUSTOM",
+        start=10,
+        limit=25,
+        expand="version",
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "CUSTOM"
+    assert "results" in result_data
+    assert isinstance(result_data["results"], list)
+
+
+@pytest.mark.anyio
+async def test_get_space_root_pages_empty_results(client, mock_confluence_fetcher):
+    """Test get_space_root_pages when no root pages found."""
+    # Mock empty response
+    mock_confluence_fetcher.get_space_root_pages.return_value = []
+
+    response = await client.call_tool(
+        "confluence_get_space_root_pages", {"space_key": "EMPTY"}
+    )
+
+    mock_confluence_fetcher.get_space_root_pages.assert_called_once_with(
+        space_key="EMPTY",
+        start=0,
+        limit=50,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "EMPTY"
+    assert result_data["count"] == 0
+    assert result_data["results"] == []
+
+
+@pytest.mark.anyio
+async def test_get_space_root_pages_limit_validation(client, mock_confluence_fetcher):
+    """Test get_space_root_pages with various limit values."""
+    # Test minimum limit
+    response = await client.call_tool(
+        "confluence_get_space_root_pages", {"space_key": "TEST", "limit": 1}
+    )
+    mock_confluence_fetcher.get_space_root_pages.assert_called_with(
+        space_key="TEST",
+        start=0,
+        limit=1,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    # Test maximum limit
+    mock_confluence_fetcher.get_space_root_pages.reset_mock()
+    response = await client.call_tool(
+        "confluence_get_space_root_pages", {"space_key": "TEST", "limit": 200}
+    )
+    mock_confluence_fetcher.get_space_root_pages.assert_called_with(
+        space_key="TEST",
+        start=0,
+        limit=200,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+
+@pytest.mark.anyio
+async def test_get_space_root_pages_pagination(client, mock_confluence_fetcher):
+    """Test get_space_root_pages with pagination parameters."""
+    response = await client.call_tool(
+        "confluence_get_space_root_pages",
+        {"space_key": "TEST", "start": 25, "limit": 10},
+    )
+
+    mock_confluence_fetcher.get_space_root_pages.assert_called_once_with(
+        space_key="TEST",
+        start=25,
+        limit=10,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert "results" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_space_root_pages_content_options(client, mock_confluence_fetcher):
+    """Test get_space_root_pages with different content processing options."""
+    # Test with markdown conversion disabled and content excluded
+    response = await client.call_tool(
+        "confluence_get_space_root_pages",
+        {
+            "space_key": "TEST",
+            "convert_to_markdown": False,
+            "include_content": False,
+        },
+    )
+
+    mock_confluence_fetcher.get_space_root_pages.assert_called_once_with(
+        space_key="TEST",
+        start=0,
+        limit=50,
+        expand="version",
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert "results" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_space_root_pages_error_handling(client, mock_confluence_fetcher):
+    """Test get_space_root_pages error handling."""
+    # Mock an exception being raised
+    mock_confluence_fetcher.get_space_root_pages.side_effect = Exception(
+        "Space not found"
+    )
+
+    response = await client.call_tool(
+        "confluence_get_space_root_pages", {"space_key": "NONEXISTENT"}
+    )
+
+    # Should still return a valid response structure with empty results
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "NONEXISTENT"
+    assert result_data["count"] == 0
+    assert result_data["results"] == []
+
+
+@pytest.mark.anyio
 async def test_update_page_with_string_parent_id(client, mock_confluence_fetcher):
     """Test updating a page with string parent_id - should remain unchanged."""
     response = await client.call_tool(
@@ -643,3 +907,1230 @@ async def test_update_page_with_string_parent_id(client, mock_confluence_fetcher
     result_data = json.loads(response[0].text)
     assert result_data["message"] == "Page updated successfully"
     assert result_data["page"]["title"] == "Test Page Mock Title"
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_basic(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool with basic parameters."""
+    response = await client.call_tool(
+        "confluence_get_page_siblings", {"page_id": "123456"}
+    )
+
+    mock_confluence_fetcher.get_page_siblings.assert_called_once_with(
+        page_id="123456",
+        include_self=False,
+        start=0,
+        limit=50,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert isinstance(result_data, dict)
+    assert "page_id" in result_data
+    assert result_data["page_id"] == "123456"
+    assert "include_self" in result_data
+    assert result_data["include_self"] is False
+    assert "count" in result_data
+    assert "results" in result_data
+    assert isinstance(result_data["results"], list)
+    assert len(result_data["results"]) == 1
+    assert result_data["results"][0]["title"] == "Test Page Mock Title"
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_include_self(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool with include_self=True."""
+    response = await client.call_tool(
+        "confluence_get_page_siblings", {"page_id": "123456", "include_self": True}
+    )
+
+    mock_confluence_fetcher.get_page_siblings.assert_called_once_with(
+        page_id="123456",
+        include_self=True,
+        start=0,
+        limit=50,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["include_self"] is True
+    assert "results" in result_data
+    assert isinstance(result_data["results"], list)
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_pagination(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool with pagination parameters."""
+    response = await client.call_tool(
+        "confluence_get_page_siblings", {"page_id": "123456", "start": 10, "limit": 25}
+    )
+
+    mock_confluence_fetcher.get_page_siblings.assert_called_once_with(
+        page_id="123456",
+        include_self=False,
+        start=10,
+        limit=25,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["start_requested"] == 10
+    assert result_data["limit_requested"] == 25
+    assert "results" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_with_content(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool with content inclusion."""
+    response = await client.call_tool(
+        "confluence_get_page_siblings",
+        {"page_id": "123456", "include_content": True, "convert_to_markdown": False},
+    )
+
+    mock_confluence_fetcher.get_page_siblings.assert_called_once_with(
+        page_id="123456",
+        include_self=False,
+        start=0,
+        limit=50,
+        expand="version,body.storage",
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert "results" in result_data
+    assert isinstance(result_data["results"], list)
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_limit_validation(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool with various limit values."""
+    # Test minimum limit
+    response = await client.call_tool(
+        "confluence_get_page_siblings", {"page_id": "123456", "limit": 1}
+    )
+    mock_confluence_fetcher.get_page_siblings.assert_called_with(
+        page_id="123456",
+        include_self=False,
+        start=0,
+        limit=1,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    # Test maximum limit
+    mock_confluence_fetcher.get_page_siblings.reset_mock()
+    response = await client.call_tool(
+        "confluence_get_page_siblings", {"page_id": "123456", "limit": 200}
+    )
+    mock_confluence_fetcher.get_page_siblings.assert_called_with(
+        page_id="123456",
+        include_self=False,
+        start=0,
+        limit=200,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_custom_expand(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool with custom expand parameter."""
+    response = await client.call_tool(
+        "confluence_get_page_siblings",
+        {"page_id": "123456", "expand": "version,space,ancestors"},
+    )
+
+    mock_confluence_fetcher.get_page_siblings.assert_called_once_with(
+        page_id="123456",
+        include_self=False,
+        start=0,
+        limit=50,
+        expand="version,space,ancestors",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert "results" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_empty_results(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool when no siblings found."""
+    # Mock empty response
+    mock_confluence_fetcher.get_page_siblings.return_value = []
+
+    response = await client.call_tool(
+        "confluence_get_page_siblings", {"page_id": "onlychild"}
+    )
+
+    mock_confluence_fetcher.get_page_siblings.assert_called_once_with(
+        page_id="onlychild",
+        include_self=False,
+        start=0,
+        limit=50,
+        expand="version",
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "onlychild"
+    assert result_data["count"] == 0
+    assert result_data["results"] == []
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_error_handling(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool error handling."""
+    # Mock an exception being raised
+    mock_confluence_fetcher.get_page_siblings.side_effect = Exception("Page not found")
+
+    response = await client.call_tool(
+        "confluence_get_page_siblings", {"page_id": "nonexistent"}
+    )
+
+    # Should still return a valid response structure with empty results and error
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "nonexistent"
+    assert result_data["count"] == 0
+    assert result_data["results"] == []
+    assert "error" in result_data
+    assert "Failed to get page siblings" in result_data["error"]
+
+
+@pytest.mark.anyio
+async def test_get_page_siblings_all_parameters(client, mock_confluence_fetcher):
+    """Test the get_page_siblings tool with all parameters."""
+    response = await client.call_tool(
+        "confluence_get_page_siblings",
+        {
+            "page_id": "123456",
+            "include_self": True,
+            "start": 5,
+            "limit": 15,
+            "expand": "version,body.storage,space",
+            "include_content": True,
+            "convert_to_markdown": False,
+        },
+    )
+
+    mock_confluence_fetcher.get_page_siblings.assert_called_once_with(
+        page_id="123456",
+        include_self=True,
+        start=5,
+        limit=15,
+        expand="version,body.storage,space",
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["include_self"] is True
+    assert result_data["start_requested"] == 5
+    assert result_data["limit_requested"] == 15
+    assert "results" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_breadcrumbs_basic(client, mock_confluence_fetcher):
+    """Test the get_page_breadcrumbs tool with basic parameters."""
+    response = await client.call_tool(
+        "confluence_get_page_breadcrumbs", {"page_id": "123456"}
+    )
+
+    mock_confluence_fetcher.get_page_breadcrumbs.assert_called_once_with(
+        page_id="123456", include_content=False
+    )
+
+    result_data = json.loads(response[0].text)
+    assert isinstance(result_data, dict)
+    assert "page_id" in result_data
+    assert result_data["page_id"] == "123456"
+    assert "breadcrumb_count" in result_data
+    assert result_data["breadcrumb_count"] == 2
+    assert "include_content" in result_data
+    assert result_data["include_content"] is False
+    assert "convert_to_markdown" in result_data
+    assert result_data["convert_to_markdown"] is True
+    assert "breadcrumbs" in result_data
+    assert isinstance(result_data["breadcrumbs"], list)
+    assert len(result_data["breadcrumbs"]) == 2
+
+
+@pytest.mark.anyio
+async def test_get_page_breadcrumbs_with_content(client, mock_confluence_fetcher):
+    """Test the get_page_breadcrumbs tool with content included."""
+    response = await client.call_tool(
+        "confluence_get_page_breadcrumbs",
+        {"page_id": "123456", "include_content": True, "convert_to_markdown": False},
+    )
+
+    mock_confluence_fetcher.get_page_breadcrumbs.assert_called_once_with(
+        page_id="123456", include_content=True
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["include_content"] is True
+    assert result_data["convert_to_markdown"] is False
+    assert "breadcrumbs" in result_data
+    assert isinstance(result_data["breadcrumbs"], list)
+
+
+@pytest.mark.anyio
+async def test_get_page_breadcrumbs_root_page(client, mock_confluence_fetcher):
+    """Test the get_page_breadcrumbs tool for root page (single breadcrumb)."""
+    # Mock a single page (root page)
+    mock_root_page = MagicMock(spec=ConfluencePage)
+    mock_root_page.to_simplified_dict.return_value = {
+        "id": "root123",
+        "title": "Root Page",
+        "space": {"key": "TEST", "name": "Test Space"},
+    }
+    mock_confluence_fetcher.get_page_breadcrumbs.return_value = [mock_root_page]
+
+    response = await client.call_tool(
+        "confluence_get_page_breadcrumbs", {"page_id": "root123"}
+    )
+
+    mock_confluence_fetcher.get_page_breadcrumbs.assert_called_once_with(
+        page_id="root123", include_content=False
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "root123"
+    assert result_data["breadcrumb_count"] == 1
+    assert len(result_data["breadcrumbs"]) == 1
+    assert result_data["breadcrumbs"][0]["title"] == "Root Page"
+
+
+@pytest.mark.anyio
+async def test_get_page_breadcrumbs_deep_hierarchy(client, mock_confluence_fetcher):
+    """Test the get_page_breadcrumbs tool for deeply nested page."""
+    # Mock a 4-level hierarchy
+    mock_pages = []
+    for i, title in enumerate(["Root", "Level 1", "Level 2", "Current Page"]):
+        mock_page = MagicMock(spec=ConfluencePage)
+        mock_page.to_simplified_dict.return_value = {
+            "id": f"page{i}",
+            "title": title,
+            "space": {"key": "TEST"},
+        }
+        mock_pages.append(mock_page)
+
+    mock_confluence_fetcher.get_page_breadcrumbs.return_value = mock_pages
+
+    response = await client.call_tool(
+        "confluence_get_page_breadcrumbs", {"page_id": "page3"}
+    )
+
+    mock_confluence_fetcher.get_page_breadcrumbs.assert_called_once_with(
+        page_id="page3", include_content=False
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "page3"
+    assert result_data["breadcrumb_count"] == 4
+    assert len(result_data["breadcrumbs"]) == 4
+    # Verify breadcrumb order
+    expected_titles = ["Root", "Level 1", "Level 2", "Current Page"]
+    actual_titles = [page["title"] for page in result_data["breadcrumbs"]]
+    assert actual_titles == expected_titles
+
+
+@pytest.mark.anyio
+async def test_get_page_breadcrumbs_error_handling(client, mock_confluence_fetcher):
+    """Test the get_page_breadcrumbs tool error handling."""
+    # Mock an exception being raised
+    mock_confluence_fetcher.get_page_breadcrumbs.side_effect = Exception(
+        "Page not found"
+    )
+
+    response = await client.call_tool(
+        "confluence_get_page_breadcrumbs", {"page_id": "nonexistent"}
+    )
+
+    # Should still return a valid response structure with empty results and error
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "nonexistent"
+    assert result_data["breadcrumb_count"] == 0
+    assert result_data["breadcrumbs"] == []
+    assert "error" in result_data
+    assert "Failed to get page breadcrumbs" in result_data["error"]
+
+
+@pytest.mark.anyio
+async def test_get_page_breadcrumbs_empty_results(client, mock_confluence_fetcher):
+    """Test the get_page_breadcrumbs tool when no breadcrumbs found."""
+    # Mock empty response
+    mock_confluence_fetcher.get_page_breadcrumbs.return_value = []
+
+    response = await client.call_tool(
+        "confluence_get_page_breadcrumbs", {"page_id": "orphan"}
+    )
+
+    mock_confluence_fetcher.get_page_breadcrumbs.assert_called_once_with(
+        page_id="orphan", include_content=False
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "orphan"
+    assert result_data["breadcrumb_count"] == 0
+    assert result_data["breadcrumbs"] == []
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_basic(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool with basic parameters."""
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "123456"}
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="123456",
+        max_depth=None,
+        limit=200,
+        include_content=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert isinstance(result_data, dict)
+    assert "page_id" in result_data
+    assert result_data["page_id"] == "123456"
+    assert "max_depth" in result_data
+    assert result_data["max_depth"] is None
+    assert "limit" in result_data
+    assert result_data["limit"] == 200
+    assert "include_content" in result_data
+    assert result_data["include_content"] is False
+    assert "count" in result_data
+    assert "descendants" in result_data
+    assert isinstance(result_data["descendants"], list)
+    assert len(result_data["descendants"]) == 1
+    assert result_data["descendants"][0]["title"] == "Test Page Mock Title"
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_with_depth_limit(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool with depth limit."""
+    response = await client.call_tool(
+        "confluence_get_page_descendants",
+        {"page_id": "123456", "max_depth": 2, "limit": 50},
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="123456",
+        max_depth=2,
+        limit=50,
+        include_content=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["max_depth"] == 2
+    assert result_data["limit"] == 50
+    assert "descendants" in result_data
+    assert isinstance(result_data["descendants"], list)
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_with_content(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool with content inclusion."""
+    response = await client.call_tool(
+        "confluence_get_page_descendants",
+        {"page_id": "123456", "include_content": True, "limit": 100},
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="123456",
+        max_depth=None,
+        limit=100,
+        include_content=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["include_content"] is True
+    assert result_data["limit"] == 100
+    assert "descendants" in result_data
+    assert isinstance(result_data["descendants"], list)
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_limit_validation(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool with various limit values."""
+    # Test minimum limit
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "123456", "limit": 1}
+    )
+    mock_confluence_fetcher.get_page_descendants.assert_called_with(
+        page_id="123456",
+        max_depth=None,
+        limit=1,
+        include_content=False,
+    )
+
+    # Test maximum limit
+    mock_confluence_fetcher.get_page_descendants.reset_mock()
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "123456", "limit": 500}
+    )
+    mock_confluence_fetcher.get_page_descendants.assert_called_with(
+        page_id="123456",
+        max_depth=None,
+        limit=500,
+        include_content=False,
+    )
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_multi_level_hierarchy(
+    client, mock_confluence_fetcher
+):
+    """Test the get_page_descendants tool with multi-level hierarchy."""
+    # Mock a multi-level hierarchy response
+    mock_child1 = MagicMock(spec=ConfluencePage)
+    mock_child1.to_simplified_dict.return_value = {
+        "id": "child1",
+        "title": "Child Page 1",
+        "url": "https://example.com/child1",
+        "content": {"value": "Child 1 content", "format": "markdown"},
+    }
+
+    mock_grandchild = MagicMock(spec=ConfluencePage)
+    mock_grandchild.to_simplified_dict.return_value = {
+        "id": "grandchild1",
+        "title": "Grandchild Page 1",
+        "url": "https://example.com/grandchild1",
+        "content": {"value": "Grandchild content", "format": "markdown"},
+    }
+
+    mock_confluence_fetcher.get_page_descendants.return_value = [
+        mock_child1,
+        mock_grandchild,
+    ]
+
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "123456", "max_depth": 3}
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="123456",
+        max_depth=3,
+        limit=200,
+        include_content=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["max_depth"] == 3
+    assert result_data["count"] == 2
+    assert len(result_data["descendants"]) == 2
+
+    # Check that both child and grandchild are present
+    titles = [page["title"] for page in result_data["descendants"]]
+    assert "Child Page 1" in titles
+    assert "Grandchild Page 1" in titles
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_empty_results(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool when no descendants found."""
+    # Mock empty response
+    mock_confluence_fetcher.get_page_descendants.return_value = []
+
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "leafpage"}
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="leafpage",
+        max_depth=None,
+        limit=200,
+        include_content=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "leafpage"
+    assert result_data["count"] == 0
+    assert result_data["descendants"] == []
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_error_handling(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool error handling."""
+    # Mock an exception being raised
+    mock_confluence_fetcher.get_page_descendants.side_effect = Exception(
+        "Page not found"
+    )
+
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "nonexistent"}
+    )
+
+    # Should still return a valid response structure with empty results and error
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "nonexistent"
+    assert result_data["count"] == 0
+    assert result_data["descendants"] == []
+    assert "error" in result_data
+    assert "Failed to get page descendants" in result_data["error"]
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_all_parameters(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool with all parameters."""
+    response = await client.call_tool(
+        "confluence_get_page_descendants",
+        {
+            "page_id": "123456",
+            "max_depth": 5,
+            "limit": 150,
+            "include_content": True,
+        },
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="123456",
+        max_depth=5,
+        limit=150,
+        include_content=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["max_depth"] == 5
+    assert result_data["limit"] == 150
+    assert result_data["include_content"] is True
+    assert "descendants" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_depth_zero(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool with depth zero (should return empty)."""
+    # Mock empty response for depth 0
+    mock_confluence_fetcher.get_page_descendants.return_value = []
+
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "123456", "max_depth": 0}
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="123456",
+        max_depth=0,
+        limit=200,
+        include_content=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["max_depth"] == 0
+    assert result_data["count"] == 0
+    assert result_data["descendants"] == []
+
+
+@pytest.mark.anyio
+async def test_get_page_descendants_large_hierarchy(client, mock_confluence_fetcher):
+    """Test the get_page_descendants tool with a large hierarchy that hits the limit."""
+    # Mock a large number of descendants
+    mock_descendants = []
+    for i in range(250):  # More than default limit of 200
+        mock_page = MagicMock(spec=ConfluencePage)
+        mock_page.to_simplified_dict.return_value = {
+            "id": f"page{i}",
+            "title": f"Page {i}",
+            "url": f"https://example.com/page{i}",
+            "content": {"value": f"Content for page {i}", "format": "markdown"},
+        }
+        mock_descendants.append(mock_page)
+
+    # Mock should return only up to the limit
+    mock_confluence_fetcher.get_page_descendants.return_value = mock_descendants[:200]
+
+    response = await client.call_tool(
+        "confluence_get_page_descendants", {"page_id": "123456", "limit": 200}
+    )
+
+    mock_confluence_fetcher.get_page_descendants.assert_called_once_with(
+        page_id="123456",
+        max_depth=None,
+        limit=200,
+        include_content=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["page_id"] == "123456"
+    assert result_data["limit"] == 200
+    assert result_data["count"] == 200
+    assert len(result_data["descendants"]) == 200
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_basic(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool with a basic single-level path."""
+    response = await client.call_tool(
+        "confluence_get_page_by_path",
+        {"space_key": "TEST", "path": "Documentation Guidelines"},
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="TEST",
+        path="Documentation Guidelines",
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert isinstance(result_data, dict)
+    assert "space_key" in result_data
+    assert result_data["space_key"] == "TEST"
+    assert "path" in result_data
+    assert result_data["path"] == "Documentation Guidelines"
+    assert "page" in result_data
+    assert result_data["page"]["title"] == "Documentation Guidelines"
+    assert result_data["page"]["id"] == "path123"
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_multi_level(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool with a multi-level path."""
+    response = await client.call_tool(
+        "confluence_get_page_by_path",
+        {"space_key": "DEV", "path": "Project/Docs/Setup Guide"},
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="DEV",
+        path="Project/Docs/Setup Guide",
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "DEV"
+    assert result_data["path"] == "Project/Docs/Setup Guide"
+    assert "page" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_backslash_separator(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool with backslash path separator."""
+    response = await client.call_tool(
+        "confluence_get_page_by_path",
+        {"space_key": "WIN", "path": "Docs\\Windows\\Installation"},
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="WIN",
+        path="Docs\\Windows\\Installation",
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "WIN"
+    assert result_data["path"] == "Docs\\Windows\\Installation"
+    assert "page" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_with_content(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool with content inclusion."""
+    response = await client.call_tool(
+        "confluence_get_page_by_path",
+        {
+            "space_key": "TEST",
+            "path": "API/Documentation",
+            "include_content": True,
+            "convert_to_markdown": False,
+        },
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="TEST",
+        path="API/Documentation",
+        include_content=True,
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert result_data["include_content"] is True
+    assert result_data["convert_to_markdown"] is False
+    assert "page" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_not_found(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool when page is not found."""
+    # Mock returning None for page not found
+    mock_confluence_fetcher.get_page_by_path.return_value = None
+
+    response = await client.call_tool(
+        "confluence_get_page_by_path", {"space_key": "TEST", "path": "Nonexistent/Page"}
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="TEST",
+        path="Nonexistent/Page",
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert result_data["path"] == "Nonexistent/Page"
+    assert result_data["found"] is False
+    assert "error" in result_data
+    assert "not found" in result_data["error"].lower()
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_empty_path(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool with empty path."""
+    # Mock returning None for empty/invalid path
+    mock_confluence_fetcher.get_page_by_path.return_value = None
+
+    response = await client.call_tool(
+        "confluence_get_page_by_path", {"space_key": "TEST", "path": ""}
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="TEST", path="", include_content=False, convert_to_markdown=True
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert result_data["path"] == ""
+    assert result_data["found"] is False
+    assert "error" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_with_leading_trailing_slashes(
+    client, mock_confluence_fetcher
+):
+    """Test the get_page_by_path tool with leading and trailing slashes."""
+    response = await client.call_tool(
+        "confluence_get_page_by_path",
+        {"space_key": "TEST", "path": "/Project/Documentation/"},
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="TEST",
+        path="/Project/Documentation/",
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert result_data["path"] == "/Project/Documentation/"
+    assert "page" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_error_handling(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool error handling."""
+    # Mock an exception being raised
+    mock_confluence_fetcher.get_page_by_path.side_effect = Exception("Space not found")
+
+    response = await client.call_tool(
+        "confluence_get_page_by_path", {"space_key": "INVALID", "path": "Some/Path"}
+    )
+
+    # Should still return a valid response structure with error
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "INVALID"
+    assert result_data["path"] == "Some/Path"
+    assert result_data["found"] is False
+    assert "error" in result_data
+    assert "error" in result_data
+    assert "Failed to find page by path" in result_data["error"]
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_all_parameters(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool with all parameters specified."""
+    response = await client.call_tool(
+        "confluence_get_page_by_path",
+        {
+            "space_key": "FULL",
+            "path": "Complete/Example/Path",
+            "include_content": True,
+            "convert_to_markdown": False,
+        },
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="FULL",
+        path="Complete/Example/Path",
+        include_content=True,
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "FULL"
+    assert result_data["path"] == "Complete/Example/Path"
+    assert result_data["include_content"] is True
+    assert result_data["convert_to_markdown"] is False
+    assert "page" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_page_by_path_markdown_conversion(client, mock_confluence_fetcher):
+    """Test the get_page_by_path tool with markdown conversion enabled."""
+    response = await client.call_tool(
+        "confluence_get_page_by_path",
+        {
+            "space_key": "MD",
+            "path": "Markdown/Example",
+            "include_content": True,
+            "convert_to_markdown": True,
+        },
+    )
+
+    mock_confluence_fetcher.get_page_by_path.assert_called_once_with(
+        space_key="MD",
+        path="Markdown/Example",
+        include_content=True,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "MD"
+    assert result_data["path"] == "Markdown/Example"
+    assert result_data["include_content"] is True
+    assert result_data["convert_to_markdown"] is True
+    assert "page" in result_data
+    assert result_data["page"]["title"] == "Documentation Guidelines"
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_basic(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool with basic parameters."""
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "TEST"}
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="TEST",
+        limit=1000,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert isinstance(result_data, dict)
+    assert "space_key" in result_data
+    assert result_data["space_key"] == "TEST"
+    assert "total_pages" in result_data
+    assert result_data["total_pages"] == 5
+    assert "limit_requested" in result_data
+    assert result_data["limit_requested"] == 1000
+    assert "pages" in result_data
+    assert isinstance(result_data["pages"], list)
+    assert len(result_data["pages"]) == 5
+    assert result_data["pages"][0]["title"] == "Flat Page 0"
+    assert result_data["pages"][0]["id"] == "flat0"
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_custom_limit(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool with custom limit."""
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "TEST", "limit": 500}
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="TEST",
+        limit=500,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert result_data["limit_requested"] == 500
+    assert "pages" in result_data
+    assert isinstance(result_data["pages"], list)
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_with_content(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool with content inclusion."""
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat",
+        {
+            "space_key": "TEST",
+            "include_content": True,
+            "convert_to_markdown": False,
+        },
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="TEST",
+        limit=1000,
+        include_content=True,
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TEST"
+    assert result_data["include_content"] is True
+    assert result_data["convert_to_markdown"] is False
+    assert "pages" in result_data
+    assert isinstance(result_data["pages"], list)
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_limit_validation(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool with various limit values."""
+    # Test minimum limit
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "TEST", "limit": 1}
+    )
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_with(
+        space_key="TEST",
+        limit=1,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    # Test maximum limit
+    mock_confluence_fetcher.get_space_pages_flat.reset_mock()
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "TEST", "limit": 5000}
+    )
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_with(
+        space_key="TEST",
+        limit=5000,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_empty_results(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool when no pages found."""
+    # Mock empty response
+    mock_confluence_fetcher.get_space_pages_flat.return_value = []
+
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "EMPTY"}
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="EMPTY",
+        limit=1000,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "EMPTY"
+    assert result_data["total_pages"] == 0
+    assert result_data["pages"] == []
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_large_collection(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool with a large collection and summary."""
+    # Mock a large collection that would trigger summary
+    mock_large_pages = []
+    for i in range(150):  # Large collection for summary test
+        mock_page = MagicMock(spec=ConfluencePage)
+        mock_page.to_simplified_dict.return_value = {
+            "id": f"large{i}",
+            "title": f"Large Page {i}",
+            "url": f"https://example.atlassian.net/wiki/spaces/LARGE/pages/large{i}/Large+Page+{i}",
+            "content": {
+                "value": f"This is large page {i} content in Markdown",
+                "format": "markdown",
+            },
+            "space": {"key": "LARGE", "name": "Large Space"},
+        }
+        mock_large_pages.append(mock_page)
+
+    mock_confluence_fetcher.get_space_pages_flat.return_value = mock_large_pages
+
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "LARGE", "limit": 200}
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="LARGE",
+        limit=200,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "LARGE"
+    assert result_data["total_pages"] == 150
+    assert result_data["limit_requested"] == 200
+    assert len(result_data["pages"]) == 150
+    # Should include summary for large result sets
+    assert "summary" in result_data
+    assert result_data["summary"]["total_pages"] == 150
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_all_parameters(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool with all parameters."""
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat",
+        {
+            "space_key": "FULL",
+            "limit": 250,
+            "include_content": True,
+            "convert_to_markdown": False,
+        },
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="FULL",
+        limit=250,
+        include_content=True,
+        convert_to_markdown=False,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "FULL"
+    assert result_data["limit_requested"] == 250
+    assert result_data["include_content"] is True
+    assert result_data["convert_to_markdown"] is False
+    assert "pages" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_error_handling(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool error handling."""
+    # Mock an exception being raised
+    mock_confluence_fetcher.get_space_pages_flat.side_effect = Exception(
+        "Space not found"
+    )
+
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "NONEXISTENT"}
+    )
+
+    # Should still return a valid response structure with empty results and error
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "NONEXISTENT"
+    assert result_data["total_pages"] == 0
+    assert result_data["pages"] == []
+    assert "error" in result_data
+    assert "Failed to get pages from space" in result_data["error"]
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_markdown_conversion(
+    client, mock_confluence_fetcher
+):
+    """Test the get_space_pages_flat tool with markdown conversion enabled."""
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat",
+        {
+            "space_key": "MD",
+            "include_content": True,
+            "convert_to_markdown": True,
+        },
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="MD",
+        limit=1000,
+        include_content=True,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "MD"
+    assert result_data["include_content"] is True
+    assert result_data["convert_to_markdown"] is True
+    assert "pages" in result_data
+    assert isinstance(result_data["pages"], list)
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_space_key_validation(
+    client, mock_confluence_fetcher
+):
+    """Test the get_space_pages_flat tool with different space key formats."""
+    # Test with uppercase space key
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "TESTSPACE"}
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="TESTSPACE",
+        limit=1000,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "TESTSPACE"
+    assert "pages" in result_data
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_performance_metadata(
+    client, mock_confluence_fetcher
+):
+    """Test the get_space_pages_flat tool includes performance metadata."""
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "PERF", "limit": 100}
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="PERF",
+        limit=100,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "PERF"
+    assert result_data["limit_requested"] == 100
+    assert "total_pages" in result_data
+    assert "pages" in result_data
+    # Performance metadata should be present
+    assert isinstance(result_data["total_pages"], int)
+    assert isinstance(result_data["pages"], list)
+
+
+@pytest.mark.anyio
+async def test_get_space_pages_flat_content_structure(client, mock_confluence_fetcher):
+    """Test the get_space_pages_flat tool returns correct content structure."""
+    response = await client.call_tool(
+        "confluence_get_space_pages_flat", {"space_key": "STRUCT"}
+    )
+
+    mock_confluence_fetcher.get_space_pages_flat.assert_called_once_with(
+        space_key="STRUCT",
+        limit=1000,
+        include_content=False,
+        convert_to_markdown=True,
+    )
+
+    result_data = json.loads(response[0].text)
+    assert result_data["space_key"] == "STRUCT"
+
+    # Verify the structure of returned pages
+    if result_data["pages"]:
+        page = result_data["pages"][0]
+        assert "id" in page
+        assert "title" in page
+        assert "url" in page
+        assert "space" in page
+        assert isinstance(page["space"], dict)
+        assert "key" in page["space"]
+        assert "name" in page["space"]
